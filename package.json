@@ -1,0 +1,12 @@
+{
+  "name": "externaltranslate",
+  "private": true,
+  "version": "0.0.1",
+  "workspaces": [
+    "frontend"
+  ],
+  "scripts": {
+    "test": "npm --workspace frontend test -- --run",
+    "build": "npm --workspace frontend run build"
+  }
+}

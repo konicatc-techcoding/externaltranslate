@@ -1,0 +1,54 @@
+# Secrets and local settings
+.env
+.env.*
+!.env.example
+keys.txt
+config/user.yaml
+config/local.yaml
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+*.egg-info/
+build/
+dist/
+
+# Node/frontend
+node_modules/
+frontend/node_modules/
+frontend/dist/
+coverage/
+
+# Runtime data
+logs/
+cache/
+state/
+recordings/
+transcripts/
+api-responses/
+*.wav
+*.pcm
+*.raw
+
+# Downloaded tools and installers
+tools/
+downloads/
+*.exe
+*.msi
+*.zip
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Hermes local planning state
+.hermes/
