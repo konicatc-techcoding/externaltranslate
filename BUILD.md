@@ -42,7 +42,7 @@ Node.js 只作為前端建置工具。正式安裝包應包含已編譯的前端
 
 ### FFmpeg 的定位
 
-v0.1 不預設依賴 FFmpeg。音訊擷取與 PCM 轉換先使用 PortAudio/`sounddevice` 與 Python 音訊處理完成。只有在後續確認需要裝置格式橋接、錄音轉檔或額外 resampling 能力時才加入 FFmpeg。若加入，必須決定由安裝程式合法隨附固定版本，或要求使用者另行安裝，並處理授權、PATH 與版本驗證。
+v0.1 不預設依賴 FFmpeg。一般 input capture 使用 PortAudio/`sounddevice`；Windows system-output loopback 使用 `PyAudioWPatch` 的 WASAPI shared-mode loopback，兩者共用 Python PCM downmix/resampling/chunk pipeline。只有在後續確認需要裝置格式橋接、錄音轉檔或額外能力時才加入 FFmpeg。若加入，必須決定由安裝程式合法隨附固定版本，或要求使用者另行安裝，並處理授權、PATH 與版本驗證。PyInstaller `onedir` 階段必須實測 `sounddevice` 與 `PyAudioWPatch` 各自的 native PortAudio library 都被正確收集，不可只驗 Python import。
 
 ### vMix 與驅動
 
@@ -93,12 +93,23 @@ Gemini API key 不得寫入 `config.yaml`。使用者在繁體中文 UI 輸入 A
 | Gemini API key | 必要 | 可建立 Gemini Live session；不可只檢查非空字串 |
 | 音訊輸入裝置 | 必要 | 可開啟選定 device/channel 並讀到 frames |
 | WASAPI/WDM driver | 必要 | 實際 capture smoke test |
+| WASAPI loopback render endpoint | 使用 system-output mode 時必要 | `PyAudioWPatch` endpoint列舉、shared-mode stream、已知訊號 capture與 restart |
 | ASIO driver | 條件必要 | 選定硬體需要 ASIO 時才要求，但一旦選用就必須完整安裝並驗證 |
 | vMix | 條件必要 | 啟用 vMix output 時必須完成安裝與 API smoke test |
 | Node.js/npm | 開發/打包必要 | 版本、npm install、frontend build |
 | FFmpeg | v0.1 非必要 | 未啟用依賴時明確顯示「此版本不需要」 |
 
 「條件必要」表示該功能一旦被使用，就必須完成所有相關驅動和外部程式安裝，否則不得宣稱完整運行；未啟用的選配功能不應阻塞其他模式啟動。
+
+Package import與endpoint列舉只可回報available／`not_checked`，不得標為functional
+`ready`。只有對選定來源完成open、PCM read、Stop、handle release與restart smoke後，
+才可在該次驗證報告中宣稱功能通過。
+
+Prerequisite checker必須讀取validated `audio.source_kind`；未啟用來源標為`optional`。
+Audio config採strict schema，unknown/unwired欄位必須拒絕；validated device/endpoint、
+channel與queue capacities由單一source factory消費，不得在runtime靜默忽略。
+Native stream status query失敗不得從`active`或PCM read API洩漏raw exception；source必須
+回報繁體中文typed error、停止pipeline並保留cleanup ownership，直到explicit Stop成功。
 
 ## Gemini 官方規格來源
 

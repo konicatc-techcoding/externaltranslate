@@ -75,3 +75,134 @@ def test_load_settings_rejects_secret_fields_inside_lists(tmp_path: Path) -> Non
 
     with pytest.raises(ConfigurationError, match="api_key"):
         load_settings(default_path=default_path)
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid_value"),
+    [
+        ("source_kind", "unsupported"),
+        ("device_index", "volt"),
+        ("device_index", -1),
+        ("loopback_endpoint_index", "speakers"),
+        ("loopback_endpoint_index", -1),
+        ("channel", 0),
+        ("target_sample_rate", 0),
+        ("chunk_duration_ms", 0),
+        ("raw_queue_capacity", 0),
+        ("pcm_queue_capacity", False),
+    ],
+)
+def test_load_settings_rejects_invalid_audio_values(
+    tmp_path: Path, field: str, invalid_value: object
+) -> None:
+    default_path = tmp_path / "default.yaml"
+    default_path.write_text(
+        "audio:\n"
+        "  source_kind: input_device\n"
+        "  device_index: null\n"
+        "  loopback_endpoint_index: null\n"
+        "  channel: 1\n"
+        "  target_sample_rate: 16000\n"
+        "  chunk_duration_ms: 100\n"
+        "  raw_queue_capacity: 32\n"
+        "  pcm_queue_capacity: 50\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigurationError, match=field):
+        load_settings(
+            default_path=default_path,
+            runtime_overrides={"audio": {field: invalid_value}},
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "unsupported_value"),
+    [
+        ("target_sample_rate", 44100),
+        ("chunk_duration_ms", 200),
+        ("raw_queue_capacity", 64),
+        ("pcm_queue_capacity", 100),
+    ],
+)
+def test_load_settings_rejects_audio_values_not_wired_to_the_runtime(
+    tmp_path: Path, field: str, unsupported_value: int
+) -> None:
+    default_path = tmp_path / "default.yaml"
+    default_path.write_text(
+        "audio:\n"
+        "  source_kind: input_device\n"
+        "  device_index: null\n"
+        "  loopback_endpoint_index: null\n"
+        "  channel: 1\n"
+        "  target_sample_rate: 16000\n"
+        "  chunk_duration_ms: 100\n"
+        "  raw_queue_capacity: 32\n"
+        "  pcm_queue_capacity: 50\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigurationError, match=f"audio.{field}.*固定"):
+        load_settings(
+            default_path=default_path,
+            runtime_overrides={"audio": {field: unsupported_value}},
+        )
+
+
+def test_load_settings_rejects_unknown_audio_fields(tmp_path: Path) -> None:
+    default_path = tmp_path / "default.yaml"
+    default_path.write_text(
+        "audio:\n"
+        "  source_kind: input_device\n"
+        "  device_index: null\n"
+        "  loopback_endpoint_index: null\n"
+        "  channel: 1\n"
+        "  target_sample_rate: 16000\n"
+        "  chunk_duration_ms: 100\n"
+        "  raw_queue_capacity: 32\n"
+        "  pcm_queue_capacity: 50\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigurationError, match="audio.unwired_future_option"):
+        load_settings(
+            default_path=default_path,
+            runtime_overrides={"audio": {"unwired_future_option": 123}},
+        )
+
+
+@pytest.mark.parametrize(
+    "audio_override",
+    [
+        {
+            "source_kind": "input_device",
+            "loopback_endpoint_index": 16,
+        },
+        {
+            "source_kind": "wasapi_loopback",
+            "device_index": 14,
+        },
+    ],
+)
+def test_load_settings_enforces_input_xor_loopback_selection(
+    tmp_path: Path, audio_override: dict[str, object]
+) -> None:
+    default_path = tmp_path / "default.yaml"
+    default_path.write_text(
+        "audio:\n"
+        "  source_kind: input_device\n"
+        "  device_index: null\n"
+        "  loopback_endpoint_index: null\n"
+        "  channel: 1\n"
+        "  target_sample_rate: 16000\n"
+        "  chunk_duration_ms: 100\n"
+        "  raw_queue_capacity: 32\n"
+        "  pcm_queue_capacity: 50\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigurationError, match="不可同時設定"):
+        load_settings(
+            default_path=default_path,
+            runtime_overrides={"audio": audio_override},
+        )

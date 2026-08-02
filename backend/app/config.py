@@ -19,6 +19,16 @@ _SECRET_KEYS = {
     "secret",
     "token",
 }
+_AUDIO_KEYS = {
+    "source_kind",
+    "device_index",
+    "loopback_endpoint_index",
+    "channel",
+    "target_sample_rate",
+    "chunk_duration_ms",
+    "raw_queue_capacity",
+    "pcm_queue_capacity",
+}
 
 
 class ConfigurationError(ValueError):
@@ -38,6 +48,7 @@ def load_settings(
     if runtime_overrides:
         _reject_secret_fields(runtime_overrides)
         settings = _deep_merge(settings, runtime_overrides)
+    _validate_audio_settings(settings)
     return settings
 
 
@@ -93,3 +104,83 @@ def _reject_secret_fields(value: Any, prefix: str = "") -> None:
     if isinstance(value, list):
         for index, item in enumerate(value):
             _reject_secret_fields(item, f"{prefix}[{index}]")
+
+
+def _validate_audio_settings(settings: Settings) -> None:
+    audio = settings.get("audio")
+    if audio is None:
+        return
+    if not isinstance(audio, Mapping):
+        raise ConfigurationError("audio 必須是 mapping。")
+
+    unknown_fields = set(audio) - _AUDIO_KEYS
+    if unknown_fields:
+        field = min(str(item) for item in unknown_fields)
+        raise ConfigurationError(f"不支援或尚未接線的設定欄位：audio.{field}")
+
+    source_kind = audio.get("source_kind")
+    if source_kind not in {"input_device", "wasapi_loopback"}:
+        raise ConfigurationError(
+            "audio.source_kind 必須是 input_device 或 wasapi_loopback。"
+        )
+
+    device_index = audio.get("device_index")
+    if device_index is not None and not _is_bounded_int(device_index, minimum=0):
+        raise ConfigurationError("audio.device_index 必須是 null 或大於等於 0 的整數。")
+
+    loopback_endpoint_index = audio.get("loopback_endpoint_index")
+    if loopback_endpoint_index is not None and not _is_bounded_int(
+        loopback_endpoint_index, minimum=0
+    ):
+        raise ConfigurationError(
+            "audio.loopback_endpoint_index 必須是 null 或大於等於 0 的整數。"
+        )
+    if source_kind == "input_device" and loopback_endpoint_index is not None:
+        raise ConfigurationError(
+            "input_device 與 loopback_endpoint_index 不可同時設定。"
+        )
+    if source_kind == "wasapi_loopback" and device_index is not None:
+        raise ConfigurationError(
+            "wasapi_loopback 與 device_index 不可同時設定。"
+        )
+
+    _require_bounded_audio_int(audio, "channel", minimum=1, maximum=64)
+    _require_fixed_audio_int(audio, "target_sample_rate", expected=16000)
+    _require_fixed_audio_int(audio, "chunk_duration_ms", expected=100)
+    _require_fixed_audio_int(audio, "raw_queue_capacity", expected=32)
+    _require_fixed_audio_int(audio, "pcm_queue_capacity", expected=50)
+
+
+def _require_fixed_audio_int(
+    audio: Mapping[str, Any], field: str, *, expected: int
+) -> None:
+    value = audio.get(field)
+    if isinstance(value, bool) or value != expected:
+        raise ConfigurationError(
+            f"audio.{field} 目前版本固定為 {expected}，其他值尚未接線至 runtime。"
+        )
+
+
+def _require_bounded_audio_int(
+    audio: Mapping[str, Any],
+    field: str,
+    *,
+    minimum: int,
+    maximum: int,
+) -> None:
+    value = audio.get(field)
+    if not _is_bounded_int(value, minimum=minimum, maximum=maximum):
+        raise ConfigurationError(
+            f"audio.{field} 必須是 {minimum} 到 {maximum} 之間的整數。"
+        )
+
+
+def _is_bounded_int(
+    value: Any,
+    *,
+    minimum: int,
+    maximum: int | None = None,
+) -> bool:
+    if isinstance(value, bool) or not isinstance(value, int):
+        return False
+    return value >= minimum and (maximum is None or value <= maximum)

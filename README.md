@@ -1,14 +1,19 @@
 # ExternalTranslate
 
-ExternalTranslate 是 Windows 本機優先的即時翻譯字幕應用程式。專案將從麥克風或 Audio Interface 擷取音訊，透過 Gemini Live Translate 產生繁體中文字幕，並在後續 Stage 輸出到網頁 Overlay 與 vMix。
+ExternalTranslate 是 Windows 本機優先的即時翻譯字幕應用程式。專案可從麥克風／Audio Interface 或 Windows 系統播放輸出擷取音訊，透過 Gemini Live Translate 產生繁體中文字幕，並在後續 Stage 輸出到網頁 Overlay 與 vMix。
 
 ## 目前狀態
 
-目前只完成 **Stage 0：專案骨架、依賴盤點與安全邊界**。
+目前完成：
 
-Stage 0 不會：
+- **Stage 0**：專案骨架、依賴盤點與安全邊界。
+- **Stage 1**：Windows input-device 列舉、capture、meter、16 kHz mono PCM16
+  轉換、100 ms chunk、bounded queue 與重複 Start/Stop。
+- **Stage 1.2**：Windows WASAPI system-output loopback、render endpoint 列舉、
+  stereo downmix、default-output resolution、source XOR 與真實 Start/Stop/switch。
 
-- 開啟麥克風或 Audio Interface。
+目前不會：
+
 - 呼叫 Gemini API。
 - 啟動 FastAPI/WebSocket。
 - 連線 vMix。
@@ -16,17 +21,18 @@ Stage 0 不會：
 
 ## 必要環境
 
-### Stage 0 必要
+### Stage 0–1.2 必要
 
 - Windows 10/11 64-bit
 - Python 3.11
 - [uv](https://docs.astral.sh/uv/)
 - Node.js 20.19+ 或 22.12+ 與 npm（符合目前 Vite 8 工具鏈要求）
 - Git for Windows
+- 可用的 WASAPI/WDM 麥克風或 Audio Interface
+- 可用的 Windows WASAPI render endpoint（使用 system-output mode 時）
 
 ### 後續條件必要
 
-- 可用的 WASAPI/WDM 麥克風或 Audio Interface：Stage 1
 - 原廠 ASIO Driver：只有選定硬體需要 ASIO 時才需要
 - Gemini API Key：Stage 2，由使用者在本機 UI 或安全輸入流程自行提供
 - vMix：Stage 5
@@ -46,7 +52,7 @@ npm install
 
 這兩個命令只安裝專案內 Python/npm 依賴，不修改系統 PATH、音訊驅動或全域套件。
 
-## Stage 0 驗證命令
+## Stage 0–1.2 驗證命令
 
 ### Backend tests
 
@@ -84,6 +90,16 @@ npm --prefix frontend run build
 uv run externaltranslate-prerequisites
 ```
 
+CLI預設讀取 `config/default.yaml`。若要套用非秘密使用者設定或明確runtime來源：
+
+```bash
+uv run externaltranslate-prerequisites --user-config "${USER_CONFIG_PATH}"
+uv run externaltranslate-prerequisites --source-kind wasapi_loopback
+```
+
+Explicit `--source-kind`會原子切換來源並清除另一來源的device/endpoint selection，
+避免使用者YAML中的舊selection與`INPUT_DEVICE XOR WASAPI_LOOPBACK`衝突。
+
 輸出為 UTF-8 JSON，包含：
 
 - Windows 與 CPU 架構
@@ -92,7 +108,78 @@ uv run externaltranslate-prerequisites
 - Git
 - FFmpeg 的「v0.1 不需要」狀態
 - vMix 的「Stage 5 條件必要」狀態
-- 音訊裝置的「Stage 1 尚未檢查」狀態
+- `sounddevice`／PortAudio 版本與可用 input endpoint 數量
+- `PyAudioWPatch` 版本與可用 WASAPI loopback render endpoint 數量
+
+Endpoint列舉只代表 adapter可載入，狀態為 `not_checked`，不等同功能已通過；必須再執行
+對應 smoke test驗證 open、PCM、Stop與restart。未啟用的另一種來源只標為optional。
+
+### 列舉 Windows 音訊輸入裝置
+
+```bash
+uv run externaltranslate-audio-devices
+```
+
+輸出包含 device index、Windows host API、input channel 數、native sample rate 與
+latency。Device index 可能在重新插拔或重新開機後改變，執行 capture 前應重新列舉。
+
+### 真實音訊 capture smoke test
+
+```bash
+uv run externaltranslate-audio-smoke --device-index "${DEVICE_INDEX}" --channel 1 --duration 10
+```
+
+先將 `DEVICE_INDEX` 設為當次列舉取得的整數。Smoke test 會：
+
+- 只使用 `INPUT_DEVICE`，不啟用 loopback。
+- 從 device native format 轉換成 16 kHz mono signed PCM16 little-endian。
+- 產生固定 100 ms／3,200-byte chunks。
+- 回報 RMS、peak、clipping、callback/processing error 與 queue drop count。
+- 驗證 WAV header、PCM byte count、Stop、handle release 與再次 Start。
+- 未指定 `--output` 時只在memory中建立WAV並驗證，不建立暫存錄音檔。
+
+若要保留明確指定的非敏感測試檔，可加上 `--output <path>`；真實錄音不得提交 Git。
+
+### 列舉 Windows system-output loopback endpoints
+
+```bash
+uv run externaltranslate-loopback-devices
+```
+
+輸出包含 render endpoint index、名稱、native channels/sample rate，以及是否為當下
+Windows default output。Index 可能因重新開機、裝置插拔或 driver變更而改變。
+
+### 真實 WASAPI loopback smoke test
+
+使用每次 Start 當下的 Windows default output：
+
+```bash
+uv run externaltranslate-loopback-smoke --duration 10
+```
+
+指定本次列舉得到的 endpoint index：
+
+```bash
+uv run externaltranslate-loopback-smoke --endpoint-index "${ENDPOINT_INDEX}" --duration 10
+```
+
+先將 `ENDPOINT_INDEX` 設為當次 loopback列舉取得的整數。
+
+Smoke test會將 native stereo/multi-channel system mix downmix/resample為 16 kHz mono
+PCM16、產生固定100 ms／3,200-byte chunks，並驗證 WAV header、meter、queue drops、
+Stop與再次Start；restart必須再次取得有效PCM才算通過。未指定 `--output` 時WAV只存在
+memory。若要保留非敏感 WAV，`--output` 在本機 Git Bash環境建議直接傳入
+quoted Windows path，例如：
+
+```bash
+uv run externaltranslate-loopback-smoke --duration 10 \
+  --output 'C:\Users\<user>\AppData\Local\Temp\loopback-smoke.wav'
+```
+
+WASAPI silence可能不產生 callback packet；smoke test若完全沒有 PCM會 fail closed，不會誤報
+成功。Capture期間若 Windows default output改變，default mode會停止目前 stream並要求重新
+Start；explicit endpoint mode則固定擷取所選 endpoint。`INPUT_DEVICE`與
+`WASAPI_LOOPBACK`永遠二選一，不同時擷取或混音。
 
 ## 設定優先順序
 
@@ -102,6 +189,10 @@ uv run externaltranslate-prerequisites
 Runtime override → 使用者設定 → config/default.yaml
 ```
 
+Audio設定使用strict schema：未知欄位或尚未接線的值會fail closed，不會接受後忽略。
+Validated `source_kind`、device/endpoint selection、channel與queue capacities由同一
+production audio source factory消費，以維持 `INPUT_DEVICE XOR WASAPI_LOOPBACK`。
+
 `config/default.yaml` 和使用者 YAML 不得包含 API key、password、token 或 secret。開發環境可參考 `.env.example`，但正式程式會從繁體中文本機 UI 接收 Gemini API Key，並預設只保存在程序記憶體。
 
 ## 安全原則
@@ -109,6 +200,7 @@ Runtime override → 使用者設定 → config/default.yaml
 - Gemini API Key 不進入 Git、YAML、前端資源、browser storage、URL 或日誌。
 - 本機服務在後續 Stage 預設只綁定 `127.0.0.1`。
 - 逐字稿預設不保存。
+- WASAPI loopback可能包含通知、會議或其他程式聲音；只在使用者明確選擇時啟動，音訊預設不保存。
 - 真實錄音、逐字稿、API 回應與使用者裝置識別資料不得提交。
 
 ## 開發文件

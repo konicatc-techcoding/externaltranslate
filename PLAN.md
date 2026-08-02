@@ -234,7 +234,7 @@ python -m mypy backend/app/audio
 - 列出真實音訊裝置。
 - 使用使用者選定 device/channel 擷取至少 10 秒。
 - 顯示 RMS/peak。
-- 將短測試結果寫成非敏感 WAV/PCM 至暫存目錄並驗證 header/byte format；測試後依規則清除或明確標示位置。
+- 預設只在memory中建立短WAV並驗證 header/byte format；只有使用者明確指定輸出路徑時才持久化非敏感測試檔。
 - 確認停止後 device handle 釋放，可再次啟動。
 
 ### Stage 1 完成條件
@@ -247,7 +247,7 @@ python -m mypy backend/app/audio
 
 ---
 
-## Stage 1.2：Windows 系統輸出 WASAPI Loopback
+## Stage 1.2：Windows 系統輸出 WASAPI Loopback（2026-08-02 review remediation）
 
 ### 目標
 
@@ -262,6 +262,16 @@ python -m mypy backend/app/audio
 - 確認至少一個真實 Windows render endpoint，並準備可重複播放的非敏感測試訊號。
 - 不修改系統 PATH、不安裝 driver、不啟用 Stereo Mix，也不安裝虛擬 audio cable；若驗證需要系統級變更，先說明並取得使用者批准。
 
+實測選定 `PyAudioWPatch 0.2.12.8`：標準 `sounddevice 0.5.5` 沒有 loopback
+device/flag；`SoundCard 0.4.6` direct WASAPI/CFFI可擷取但採 blocking pull，且有已知
+Windows channel/blocksize/underrun限制；`PyAudioWPatch` 的 callback與 loopback virtual
+endpoint最符合既有 non-blocking architecture。兩個候選皆以真實 Windows render endpoint
+及440 Hz訊號驗證，未修改driver、PATH、Stereo Mix或virtual cable。
+Packaging metadata確認：`PyAudioWPatch` 為 Apache-2.0並提供 CPython 3.11 Windows x64
+wheel（內含patched PortAudio）；`SoundCard` 為 BSD-3-Clause、`py3-none-any` wheel並依賴
+CFFI/native WASAPI。PyInstaller `onedir` native-library收集仍屬Stage 6實機gate，本階段不
+以source-mode import/capture取代packaged smoke。
+
 ### 來源與生命週期規則
 
 - `INPUT_DEVICE` 與 `WASAPI_LOOPBACK` 共用 meter、converter、100 ms chunker 和 bounded queue。
@@ -271,14 +281,14 @@ python -m mypy backend/app/audio
 - Loopback native format 不可假設；必須從實際 endpoint 取得 sample rate、channel count 與 sample format，再 downmix/resample 為 16 kHz mono PCM16 little-endian。
 - Exclusive-mode、endpoint unplug、silence、unsupported format 與 queue overflow 必須回傳可操作錯誤，不得拖垮其他元件。
 
-### 預計檔案
+### 實作檔案
 
 ```text
 Create: backend/app/audio/sources/wasapi_loopback.py
 Create: backend/app/cli/loopback_devices.py
 Create: backend/app/cli/loopback_smoke.py
 Create: backend/tests/audio/test_wasapi_loopback.py
-Create: backend/tests/audio/test_source_switching.py
+Create: backend/tests/audio/test_source_controller.py
 Modify: backend/app/audio/models.py
 Modify: backend/app/audio/capture.py
 Modify: backend/app/audio/converter.py
@@ -300,6 +310,7 @@ Modify: README.md
 8. 實作 endpoint unplug、default-output change、exclusive-mode failure、silence 與 restart error mapping。
 9. 建立 loopback smoke CLI，輸出 source kind、endpoint、native format、meter、chunk count、drop count 與轉換後格式；不得輸出錄音內容。
 10. 更新 README 與非敏感 default config；預設 source 保持 `INPUT_DEVICE`，不得未經使用者選擇就擷取系統輸出。
+11. 使用strict audio schema與單一production source factory消費validated selection/channel/queue設定；prerequisite依啟用來源區分`not_checked`與`optional`。
 
 ### 自動驗證
 
@@ -316,6 +327,8 @@ python -m mypy backend/app/audio
 - 指定 render endpoint 與 default-output resolution。
 - Stereo／multi-channel downmix、44.1/48 kHz resampling、PCM16 little-endian 與 100 ms chunk。
 - 無聲輸出、queue overflow、endpoint unplug、default-output change、重複 Start/Stop 和 source switching。
+- Stop/open/close/manager terminate或native status query失敗均保留可重試ownership；
+  `active`維持safe boolean API，malformed native payload不可逃出callback。
 - Callback 不執行 network I/O 或 blocking work。
 
 ### 真實 CLI smoke test
@@ -326,11 +339,23 @@ python -m mypy backend/app/audio
 - 切換至真實 microphone/audio interface，再切回 loopback；每次確認前一個 device handle 已釋放。
 - vMix 不是 Stage 1.2 prerequisite；若用 vMix 產生測試聲音，只驗證其輸出被選定 endpoint 擷取，不啟用 vMix HTTP API 功能。
 
+2026-08-02 非敏感實機結果（裝置名稱與當次index不寫入版本控制）：
+
+- Windows default render endpoint以 native 48 kHz stereo成功開啟；device index於每次測試前重新列舉。
+- 正式10秒CLI capture：100個3,200-byte chunks、320,000 PCM bytes、16 kHz mono
+  PCM16、160,000 frames、restart verified、callback/status/processing errors皆0、
+  raw/PCM queue drops皆0。
+- WAV獨立讀回：10.0秒、FFT peak `440.0 Hz`、0 clipped samples；檔案位於 repository外
+  Windows Temp，不納入Git。
+- 真實 source switch：WASAPI input endpoint → default loopback（讀取3,200-byte PCM
+  chunk）→同一input endpoint；最後沒有 active source。
+
 ### Stage 1.2 完成條件
 
 - 至少一個真實 Windows render endpoint 通過 loopback 功能測試。
 - 使用者可在 `INPUT_DEVICE` 與 `WASAPI_LOOPBACK` 間切換，但不能同時擷取或混音。
 - 兩種來源輸出相同的 downstream PCM contract，且共用 bounded queue。
+- Audio config未知或未接線欄位fail closed；所有已知selection/channel/queue欄位有production consumer。
 - 裝置失效或 library/backend 問題有繁體中文可操作訊息，不以 mock 宣稱 loopback 可用。
 - 停止，提交 Stage 1.2 報告，等待使用者批准 Stage 2。
 
@@ -716,12 +741,18 @@ Modify: README.md
 
 ## 4. 目前下一步
 
-Stage 0 已完成並通過驗收：Python／React 專案骨架、設定與 credential 安全邊界、prerequisite CLI、繁體中文最小 UI、測試與 production build 均已建立並執行驗證。Stage 0 未擷取音訊、未呼叫 Gemini，也未連線 vMix API。
+Stage 0 與 Stage 1 已完成並通過驗證。Stage 1 已建立 `INPUT_DEVICE` adapter、
+Windows input endpoint 列舉、non-blocking callback handoff、RMS/peak meter、
+44.1/48 kHz 至 16 kHz mono PCM16 little-endian streaming conversion、固定 100 ms
+chunk、bounded drop-oldest queue、繁體中文錯誤與可重複 Start/Stop。真實 Windows
+WASAPI input endpoint已完成10秒 capture、WAV/byte-format 與 handle
+release/restart smoke test。Stage 1 未呼叫 Gemini、未啟用 vMix，也未實作系統輸出
+loopback。
 
-下一個可執行工作是：
+Stage 1.2 已完成主要實作與第一輪實機smoke，目前正在修正 independent fail-closed
+review findings。下一個可執行工作是完成修正、重跑實機smoke與第二輪獨立review；通過後
+停止並等待使用者批准Stage 2。
 
 ```text
-Stage 1：Windows 音訊裝置、Capture、Meter 與 PCM Pipeline
+Stage 1.2：review remediation與重新驗收
 ```
-
-開始 Stage 1 前，先重新讀取 `AGENTS.md`、`BUILD.md`、`PLAN.md`，重新盤點目前資料夾與 Stage 1 prerequisites，選定真實 Windows input device／channel，之後只完成 Stage 1 並停止。未取得使用者批准前不得自行開始 Stage 1。

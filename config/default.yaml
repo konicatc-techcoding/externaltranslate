@@ -10,6 +10,16 @@ gemini:
 caption:
   max_payload_length: 4096
 
+audio:
+  source_kind: input_device
+  device_index: null
+  loopback_endpoint_index: null
+  channel: 1
+  target_sample_rate: 16000
+  chunk_duration_ms: 100
+  raw_queue_capacity: 32
+  pcm_queue_capacity: 50
+
 features:
   transcript_persistence: false
   lan_access: false

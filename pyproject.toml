@@ -9,7 +9,11 @@ description = "Windows real-time translated captions for web overlays and vMix"
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
 dependencies = [
+  "numpy>=2,<3",
+  "pyaudiowpatch>=0.2.12.8,<0.3",
   "PyYAML>=6.0.2,<7",
+  "sounddevice>=0.5.5,<0.6",
+  "soxr>=1,<2",
 ]
 
 [dependency-groups]
@@ -21,6 +25,10 @@ dev = [
 ]
 
 [project.scripts]
+externaltranslate-audio-devices = "backend.app.cli.audio_devices:main"
+externaltranslate-audio-smoke = "backend.app.cli.audio_smoke:main"
+externaltranslate-loopback-devices = "backend.app.cli.loopback_devices:main"
+externaltranslate-loopback-smoke = "backend.app.cli.loopback_smoke:main"
 externaltranslate-prerequisites = "backend.app.cli.prerequisites:main"
 
 [tool.hatch.build.targets.wheel]

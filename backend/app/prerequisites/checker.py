@@ -1,13 +1,20 @@
 from __future__ import annotations
 
+import importlib
 import platform
 import re
 import shutil
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
+from backend.app.audio.devices import SoundDeviceBackend, enumerate_input_devices
+from backend.app.audio.sources.wasapi_loopback import (
+    PyAudioWPatchDeviceBackend,
+    enumerate_loopback_endpoints,
+)
 from backend.app.prerequisites.models import PrerequisiteResult, PrerequisiteStatus
 
 
@@ -23,6 +30,88 @@ class SystemProbe(Protocol):
     def installation_path(self, command: str) -> str | None: ...
 
     def command_version(self, command: str, args: tuple[str, ...]) -> str | None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class AudioProbeResult:
+    ready: bool
+    version: str | None
+    input_device_count: int
+    detail: str
+
+
+class AudioPrerequisiteProbe(Protocol):
+    def inspect(self) -> AudioProbeResult: ...
+
+
+@dataclass(frozen=True, slots=True)
+class LoopbackProbeResult:
+    ready: bool
+    version: str | None
+    endpoint_count: int
+    detail: str
+
+
+class LoopbackPrerequisiteProbe(Protocol):
+    def inspect(self) -> LoopbackProbeResult: ...
+
+
+class DefaultAudioPrerequisiteProbe:
+    """Enumerate PortAudio endpoints without opening or changing a device."""
+
+    def inspect(self) -> AudioProbeResult:
+        try:
+            sounddevice: Any = importlib.import_module("sounddevice")
+            portaudio_version = sounddevice.get_portaudio_version()[1]
+            version = f"sounddevice {sounddevice.__version__} / {portaudio_version}"
+            devices = enumerate_input_devices(SoundDeviceBackend())
+        except Exception:
+            return AudioProbeResult(
+                ready=False,
+                version=None,
+                input_device_count=0,
+                detail="無法載入 PortAudio 或列舉 Windows 音訊輸入裝置。",
+            )
+
+        count = len(devices)
+        return AudioProbeResult(
+            ready=count > 0,
+            version=version,
+            input_device_count=count,
+            detail=(
+                f"已列舉 {count} 個 Windows 音訊輸入 endpoint。"
+                if count
+                else "未找到可用的 Windows 音訊輸入裝置。"
+            ),
+        )
+
+
+class DefaultLoopbackPrerequisiteProbe:
+    """Enumerate shared-mode WASAPI render endpoints without opening a stream."""
+
+    def inspect(self) -> LoopbackProbeResult:
+        try:
+            pyaudio: Any = importlib.import_module("pyaudiowpatch")
+            version = f"PyAudioWPatch {pyaudio.__version__}"
+            endpoints = enumerate_loopback_endpoints(PyAudioWPatchDeviceBackend())
+        except Exception:
+            return LoopbackProbeResult(
+                ready=False,
+                version=None,
+                endpoint_count=0,
+                detail="無法載入 PyAudioWPatch 或列舉 WASAPI loopback render endpoints。",
+            )
+        count = len(endpoints)
+        return LoopbackProbeResult(
+            ready=count > 0,
+            version=version,
+            endpoint_count=count,
+            detail=(
+                f"已列舉 {count} 個 Windows WASAPI loopback render endpoints。"
+                if count
+                else "未找到 WASAPI loopback render endpoint。"
+            ),
+        )
 
 
 class DefaultSystemProbe:
@@ -120,8 +209,18 @@ class PrerequisiteChecker:
         self,
         probe: SystemProbe | None = None,
         python_version: tuple[int, int, int] | None = None,
+        audio_probe: AudioPrerequisiteProbe | None = None,
+        loopback_probe: LoopbackPrerequisiteProbe | None = None,
+        enabled_audio_source: str | None = None,
     ) -> None:
+        if enabled_audio_source not in {None, "input_device", "wasapi_loopback"}:
+            raise ValueError(
+                "enabled_audio_source 必須是 input_device、wasapi_loopback 或 None。"
+            )
         self._probe = probe or DefaultSystemProbe()
+        self._audio_probe = audio_probe or DefaultAudioPrerequisiteProbe()
+        self._loopback_probe = loopback_probe or DefaultLoopbackPrerequisiteProbe()
+        self._enabled_audio_source = enabled_audio_source
         self._python_version = python_version or (
             sys.version_info.major,
             sys.version_info.minor,
@@ -147,15 +246,72 @@ class PrerequisiteChecker:
             ),
             self._ffmpeg_result(),
             self._vmix_result(),
-            PrerequisiteResult(
-                identifier="audio",
-                label="音訊輸入裝置與驅動",
-                status=PrerequisiteStatus.NOT_CHECKED,
-                required_for="Stage 1",
-                detail="Stage 0 不開啟音訊裝置；Stage 1 將執行 WASAPI/WDM 功能測試。",
-                action="進入 Stage 1 前選定麥克風或 Audio Interface 與輸入 channel。",
-            ),
+            self._audio_result(),
+            self._loopback_result(),
         ]
+
+    def _loopback_result(self) -> PrerequisiteResult:
+        result = self._loopback_probe.inspect()
+        disabled = self._enabled_audio_source == "input_device"
+        status = (
+            PrerequisiteStatus.OPTIONAL
+            if disabled or (not result.ready and self._enabled_audio_source is None)
+            else (
+                PrerequisiteStatus.NOT_CHECKED
+                if result.ready
+                else PrerequisiteStatus.MISSING
+            )
+        )
+        return PrerequisiteResult(
+            identifier="wasapi_loopback",
+            label="Windows 系統輸出 WASAPI loopback",
+            status=status,
+            required_for="Stage 1.2",
+            version=result.version,
+            detail=result.detail,
+            action=(
+                "目前未啟用 WASAPI loopback；切換來源前再執行功能驗證。"
+                if disabled
+                else (
+                    "執行 externaltranslate-loopback-smoke，確認 open、PCM、stop 與 restart。"
+                    if result.ready
+                    else (
+                        "確認 Windows 預設輸出可用、音訊服務正常，"
+                        "並重新執行 loopback endpoint 列舉。"
+                    )
+                )
+            ),
+        )
+
+    def _audio_result(self) -> PrerequisiteResult:
+        result = self._audio_probe.inspect()
+        disabled = self._enabled_audio_source == "wasapi_loopback"
+        status = (
+            PrerequisiteStatus.OPTIONAL
+            if disabled or (not result.ready and self._enabled_audio_source is None)
+            else (
+                PrerequisiteStatus.NOT_CHECKED
+                if result.ready
+                else PrerequisiteStatus.MISSING
+            )
+        )
+        return PrerequisiteResult(
+            identifier="audio",
+            label="音訊輸入裝置與 PortAudio",
+            status=status,
+            required_for="Stage 1",
+            version=result.version,
+            detail=result.detail,
+            action=(
+                "目前未啟用 input device；切換來源前再執行功能驗證。"
+                if disabled
+                else (
+                    "執行 externaltranslate-audio-smoke，確認 open、PCM、stop 與 restart。"
+                    if result.ready
+                    else "連接麥克風或 Audio Interface，確認 Windows driver 正常後重新檢查。"
+                )
+            ),
+        )
 
     def _windows_result(self) -> PrerequisiteResult:
         system = self._probe.system()
