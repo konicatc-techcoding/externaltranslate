@@ -6,6 +6,7 @@ gemini:
   model: gemini-3.5-live-translate-preview
   target_language_code: zh-Hant
   echo_target_language: true
+  session_rotation_seconds: 480
 
 caption:
   max_payload_length: 4096

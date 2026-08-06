@@ -29,6 +29,12 @@ _AUDIO_KEYS = {
     "raw_queue_capacity",
     "pcm_queue_capacity",
 }
+_GEMINI_KEYS = {
+    "model",
+    "target_language_code",
+    "echo_target_language",
+    "session_rotation_seconds",
+}
 
 
 class ConfigurationError(ValueError):
@@ -49,6 +55,7 @@ def load_settings(
         _reject_secret_fields(runtime_overrides)
         settings = _deep_merge(settings, runtime_overrides)
     _validate_audio_settings(settings)
+    _validate_gemini_settings(settings)
     return settings
 
 
@@ -149,6 +156,40 @@ def _validate_audio_settings(settings: Settings) -> None:
     _require_fixed_audio_int(audio, "chunk_duration_ms", expected=100)
     _require_fixed_audio_int(audio, "raw_queue_capacity", expected=32)
     _require_fixed_audio_int(audio, "pcm_queue_capacity", expected=50)
+
+
+def _validate_gemini_settings(settings: Settings) -> None:
+    gemini = settings.get("gemini")
+    if gemini is None:
+        return
+    if not isinstance(gemini, Mapping):
+        raise ConfigurationError("gemini 必須是 mapping。")
+
+    unknown_fields = set(gemini) - _GEMINI_KEYS
+    if unknown_fields:
+        field = min(str(item) for item in unknown_fields)
+        raise ConfigurationError(f"不支援或尚未接線的設定欄位：gemini.{field}")
+
+    model = gemini.get("model")
+    if not isinstance(model, str) or not model.strip():
+        raise ConfigurationError("gemini.model 必須是非空字串。")
+
+    target_language_code = gemini.get("target_language_code")
+    if not isinstance(target_language_code, str) or re.fullmatch(
+        r"[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*", target_language_code
+    ) is None:
+        raise ConfigurationError("gemini.target_language_code 必須是有效的BCP-47格式。")
+
+    if not isinstance(gemini.get("echo_target_language"), bool):
+        raise ConfigurationError("gemini.echo_target_language 必須是boolean。")
+
+    session_rotation_seconds = gemini.get("session_rotation_seconds")
+    if session_rotation_seconds is not None and not _is_bounded_int(
+        session_rotation_seconds, minimum=60, maximum=540
+    ):
+        raise ConfigurationError(
+            "gemini.session_rotation_seconds 必須是 60 到 540 之間的整數。"
+        )
 
 
 def _require_fixed_audio_int(

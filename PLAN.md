@@ -399,9 +399,15 @@ Modify: README.md
 5. 依官方文件實作 Gemini Live adapter，不猜測 Preview API。
 6. 將模型名稱與 `target_language_code=zh-Hant` 放在設定。
 7. 實作 timeout、取消、正常關閉和 error mapping。
-8. 實作 bounded audio handoff，Gemini 變慢時不阻塞 capture callback。
-9. 建立真實 Gemini smoke CLI。
-10. 驗證日誌和例外不包含 API key 或完整敏感逐字稿。
+8. 將AudioSource lifecycle置於Gemini session supervisor外層；capture只start一次。
+9. 每480秒主動建立新session，收到GoAway時提前換線，不使用session resumption。
+10. connect/send/receive/EOF暫時性錯誤採`0.5 → 1 → 2 → 4 → 5秒上限`
+    bounded backoff；authentication/permission/configuration錯誤fail closed。
+11. Timer與error共用單一replacement ownership path；舊session完成cleanup後才建立下一個，
+    不得產生duplicate sender或無界PCM backlog。
+12. 實作 bounded audio handoff，Gemini變慢或重連時不阻塞capture callback。
+13. 建立真實 Gemini smoke CLI。
+14. 驗證日誌和例外不包含 API key或完整敏感逐字稿。
 
 ### 自動驗證
 
@@ -430,6 +436,9 @@ Fake provider 只用於可重現的錯誤與 lifecycle 測試；不能取代真�
 - Start/Stop 可重複。
 - 無語音、網路斷線、無效 key 和 API error 都有繁體中文訊息。
 - 停止後所有 async task、audio stream 和 Gemini session 都結束。
+- 使用縮短的test rotation interval驗證replacement session；production default維持480秒。
+- Connect/send/receive/EOF/GoAway後可受控重連，且AudioSource不重啟。
+- Permanent authentication/permission錯誤不重試，transient retry沒有tight loop。
 
 ### Stage 2 完成條件
 

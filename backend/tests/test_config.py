@@ -171,6 +171,90 @@ def test_load_settings_rejects_unknown_audio_fields(tmp_path: Path) -> None:
         )
 
 
+def test_load_settings_rejects_unknown_gemini_fields(tmp_path: Path) -> None:
+    default_path = tmp_path / "default.yaml"
+    default_path.write_text(
+        "gemini:\n"
+        "  model: gemini-3.5-live-translate-preview\n"
+        "  target_language_code: zh-Hant\n"
+        "  echo_target_language: true\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigurationError, match="gemini.unwired_future_option"):
+        load_settings(
+            default_path=default_path,
+            runtime_overrides={"gemini": {"unwired_future_option": 123}},
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid_value"),
+    [
+        ("model", ""),
+        ("model", 35),
+        ("target_language_code", ""),
+        ("target_language_code", "not a language"),
+        ("echo_target_language", "true"),
+    ],
+)
+def test_load_settings_rejects_invalid_gemini_values(
+    tmp_path: Path, field: str, invalid_value: object
+) -> None:
+    default_path = tmp_path / "default.yaml"
+    default_path.write_text(
+        "gemini:\n"
+        "  model: gemini-3.5-live-translate-preview\n"
+        "  target_language_code: zh-Hant\n"
+        "  echo_target_language: true\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigurationError, match=field):
+        load_settings(
+            default_path=default_path,
+            runtime_overrides={"gemini": {field: invalid_value}},
+        )
+
+
+def test_load_settings_accepts_safe_gemini_session_rotation_seconds(
+    tmp_path: Path,
+) -> None:
+    default_path = tmp_path / "default.yaml"
+    default_path.write_text(
+        "gemini:\n"
+        "  model: gemini-3.5-live-translate-preview\n"
+        "  target_language_code: zh-Hant\n"
+        "  echo_target_language: true\n",
+        encoding="utf-8",
+    )
+
+    settings = load_settings(
+        default_path=default_path,
+        runtime_overrides={"gemini": {"session_rotation_seconds": 480}},
+    )
+
+    assert settings["gemini"]["session_rotation_seconds"] == 480
+
+
+@pytest.mark.parametrize("invalid_value", [59, 541, True])
+def test_load_settings_rejects_unsafe_gemini_session_rotation_seconds(
+    tmp_path: Path, invalid_value: object
+) -> None:
+    default_path = tmp_path / "default.yaml"
+    default_path.write_text(
+        "gemini:\n"
+        "  model: gemini-3.5-live-translate-preview\n"
+        "  target_language_code: zh-Hant\n"
+        "  echo_target_language: true\n"
+        f"  session_rotation_seconds: {str(invalid_value).lower()}\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigurationError, match="60 到 540"):
+        load_settings(default_path=default_path)
+
+
 @pytest.mark.parametrize(
     "audio_override",
     [

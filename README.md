@@ -9,12 +9,15 @@ ExternalTranslate 是 Windows 本機優先的即時翻譯字幕應用程式。�
 - **Stage 0**：專案骨架、依賴盤點與安全邊界。
 - **Stage 1**：Windows input-device 列舉、capture、meter、16 kHz mono PCM16
   轉換、100 ms chunk、bounded queue 與重複 Start/Stop。
-- **Stage 1.2**：Windows WASAPI system-output loopback、render endpoint 列舉、
-  stereo downmix、default-output resolution、source XOR 與真實 Start/Stop/switch。
+- **Stage 1.2**：Windows WASAPI system-output loopback、render endpoint列舉、
+  stereo downmix、default-output resolution、source XOR與真實Start/Stop/switch。
+- **Stage 2（驗證中）**：官方`google-genai` Live Translate adapter、provider-neutral
+  transcription events、安全CLI，以及持續AudioSource外層的Gemini session supervisor。
+  Automated tests已涵蓋8分鐘主動rotation、GoAway換線、錯誤分類與bounded backoff；
+  真實Gemini smoke尚未完成前，不視為Stage 2驗收通過。
 
 目前不會：
 
-- 呼叫 Gemini API。
 - 啟動 FastAPI/WebSocket。
 - 連線 vMix。
 - 安裝或修改任何系統驅動、PATH 或全域套件。
@@ -52,7 +55,7 @@ npm install
 
 這兩個命令只安裝專案內 Python/npm 依賴，不修改系統 PATH、音訊驅動或全域套件。
 
-## Stage 0–1.2 驗證命令
+## Stage 0–2 驗證命令
 
 ### Backend tests
 
@@ -181,6 +184,43 @@ WASAPI silence可能不產生 callback packet；smoke test若完全沒有 PCM會
 Start；explicit endpoint mode則固定擷取所選 endpoint。`INPUT_DEVICE`與
 `WASAPI_LOOPBACK`永遠二選一，不同時擷取或混音。
 
+### Gemini Live Translate smoke test
+
+Gemini API Key不得放入command line、YAML或repository。若process environment沒有
+`GEMINI_API_KEY`，CLI會以hidden prompt安全詢問；不要把key貼進聊天或log。
+
+WASAPI loopback：
+
+```bash
+uv run externaltranslate-gemini-smoke \
+  --source-kind wasapi_loopback \
+  --duration 30
+```
+
+Input device：
+
+```bash
+uv run externaltranslate-gemini-smoke \
+  --source-kind input_device \
+  --device-index "${DEVICE_INDEX}" \
+  --channel 1 \
+  --duration 30
+```
+
+CLI預設只輸出transcription metadata，不輸出完整文字；只有使用者明確加上
+`--show-text`才會顯示文字。Smoke驗收：只要實際收到非空、language code為
+`zh-Hant`的output transcription（含即時interim）即回報成功——這是因為連續語音下
+Gemini Live Translate主要送出`finished=false`的即時字幕；僅connect成功、空白輸出或
+只收到input transcription都不算通過。
+
+AudioSource在整個pipeline只start一次。Gemini session預設每480秒主動換新連線，收到
+server GoAway會提前換線；retryable connect/send/receive/EOF錯誤採
+`0.5 → 1 → 2 → 4 → 5秒上限`backoff。Authentication、permission、invalid
+configuration與policy錯誤fail closed，不會無限重試。換線期間沿用audio source既有
+bounded drop-oldest queue；唯一的persistent PCM reader位於Gemini sessions外層，透過
+容量1的drop-oldest async handoff供當前session sender消費。Rotation不會建立第二個
+`get_pcm_chunk()` consumer，也不建立無界buffer或追送長時間過期音訊。
+
 ## 設定優先順序
 
 非秘密設定依以下順序覆蓋：
@@ -192,6 +232,8 @@ Runtime override → 使用者設定 → config/default.yaml
 Audio設定使用strict schema：未知欄位或尚未接線的值會fail closed，不會接受後忽略。
 Validated `source_kind`、device/endpoint selection、channel與queue capacities由同一
 production audio source factory消費，以維持 `INPUT_DEVICE XOR WASAPI_LOOPBACK`。
+Gemini設定同樣使用strict schema；`session_rotation_seconds`預設480，允許範圍為
+60–540秒，且由production CLI實際傳入session supervisor。
 
 `config/default.yaml` 和使用者 YAML 不得包含 API key、password、token 或 secret。開發環境可參考 `.env.example`，但正式程式會從繁體中文本機 UI 接收 Gemini API Key，並預設只保存在程序記憶體。
 
