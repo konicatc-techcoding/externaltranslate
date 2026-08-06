@@ -122,8 +122,8 @@ INPUT_DEVICE XOR WASAPI_LOOPBACK   （不得混音／同時持有兩種 source�
 ### 尚未完成（阻塞驗收）
 - [x] 第三輪 independent fail-closed review（deleg_031e460b）通過。
 - [x] **真實 Gemini Live smoke** 通過（input 23 / output 22）。
-- [ ] 使用者驗收。
-- [ ] Stage 2 commit／push（需另行取得使用者授權，不得沿用 Stage 1.2 授權）。
+- [x] 使用者驗收通過（2026-08-06），授權 commit + push。
+- [x] **Stage 2 已 commit + push**：`28a4120`（`b0a0a6a..28a4120 main -> main`，35 files，+4047/−7）。
 
 ---
 
