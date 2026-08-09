@@ -11,10 +11,13 @@ def sanitize_caption(text: object, *, max_payload_length: int) -> str:
     Removes non-printable control characters while keeping printable text,
     newlines, tabs and carriage returns. Rejects non-string input with a typed
     error so downstream never renders unexpected types.
+
+    Oversized payloads keep their **tail**: captions accumulate over time, so
+    the most recent speech is what a viewer needs to see.
     """
     if not isinstance(text, str):
         raise CaptionSanitizationError("字幕內容必須是字串。")
     cleaned = "".join(ch for ch in text if ch.isprintable() or ch in "\n\r\t")
     if len(cleaned) > max_payload_length:
-        cleaned = cleaned[:max_payload_length]
+        cleaned = cleaned[-max_payload_length:]
     return cleaned

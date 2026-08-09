@@ -61,7 +61,7 @@ def test_caption_event_sink_commits_assembled_state() -> None:
         await sink(
             TranslationEvent(
                 kind=TranslationEventKind.OUTPUT_TRANSCRIPTION,
-                text="你好",
+                text="你",
                 language_code="zh-Hant",
                 finished=False,
             )
@@ -69,7 +69,7 @@ def test_caption_event_sink_commits_assembled_state() -> None:
         await sink(
             TranslationEvent(
                 kind=TranslationEventKind.OUTPUT_TRANSCRIPTION,
-                text="你好",
+                text="好",
                 language_code="zh-Hant",
                 finished=True,
             )
@@ -97,7 +97,7 @@ def test_pipeline_feeds_caption_sink_and_retains_final_across_expiring() -> None
             ),
             TranslationEvent(
                 kind=TranslationEventKind.OUTPUT_TRANSCRIPTION,
-                text="第一句",
+                text="。",
                 language_code="zh-Hant",
                 finished=True,
             ),
@@ -118,7 +118,7 @@ def test_pipeline_feeds_caption_sink_and_retains_final_across_expiring() -> None
         state = store.snapshot()
         # expiring clears unconfirmed partials but retains the confirmed final
         assert state.status is CaptionStatus.FINAL
-        assert state.text == "第一句"
+        assert state.text == "第一句。"
         assert source.started == 1
         assert source.stopped == 1
 

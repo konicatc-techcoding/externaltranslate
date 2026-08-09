@@ -27,9 +27,9 @@ def test_sanitize_preserves_newline_tab_cr() -> None:
     assert cleaned == "第一行\n第二行\t結尾\r!"
 
 
-def test_sanitize_truncates_to_max_payload_length() -> None:
+def test_sanitize_truncates_to_max_payload_length_keeping_the_tail() -> None:
     cleaned = sanitize_caption("abcdefghij", max_payload_length=5)
-    assert cleaned == "abcde"
+    assert cleaned == "fghij"
 
 
 def test_sanitize_keeps_chinese_emoji() -> None:

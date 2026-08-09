@@ -22,11 +22,17 @@ _SESSION_CLEAR = frozenset(
 class CaptionAssembler:
     """Turn provider-neutral translation events into canonical CaptionState.
 
-    Event semantics (confirmed during Stage 2 real smoke): output transcription
-    ``text`` is a cumulative snapshot, ``finished`` marks finality. A new output
-    event replaces the pending text; ``finished=True`` promotes to final. A
-    session boundary clears unconfirmed partials but retains the confirmed final
-    so the caption does not blank out during rotation.
+    Event semantics (confirmed against real Gemini Live output on 2026-08-09):
+    each output transcription carries only the **newly translated fragment**,
+    not a cumulative snapshot, so fragments are appended. ``finished=True``
+    promotes the accumulated text to final and the next fragment starts a new
+    caption. A session boundary clears unconfirmed partials but retains the
+    confirmed final so the caption does not blank out during rotation.
+
+    The accumulated text is trimmed from the front to ``max_payload_length``:
+    continuous speech would otherwise grow without bound, and truncating the
+    tail would freeze the caption at the limit. Multi-line display windowing
+    remains Stage 3.1 work.
     """
 
     def __init__(
@@ -55,13 +61,19 @@ class CaptionAssembler:
     def _accept_output(self, event: TranslationEvent) -> CaptionState | None:
         if event.text is None:
             return None
-        text = sanitize_caption(event.text, max_payload_length=self._max_payload_length)
-        if not text:
+        fragment = sanitize_caption(
+            event.text, max_payload_length=self._max_payload_length
+        )
+        if not fragment:
             return None
-        status = CaptionStatus.FINAL if event.finished is True else CaptionStatus.PARTIAL
         state = self._state
-        if text == state.text and status is state.status:
-            return None  # deduplicate repeated partial/final snapshots
+        # A confirmed final closes its caption, so the next fragment opens a
+        # new one instead of extending finished text.
+        pending = "" if state.status is not CaptionStatus.PARTIAL else state.text
+        if not pending and not fragment.strip():
+            return None  # never open a caption with whitespace alone
+        text = (pending + fragment)[-self._max_payload_length :]
+        status = CaptionStatus.FINAL if event.finished is True else CaptionStatus.PARTIAL
         next_state = CaptionState(
             revision=state.revision + 1,
             status=status,

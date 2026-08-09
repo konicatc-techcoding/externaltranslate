@@ -22,44 +22,61 @@ def stopped() -> TranslationEvent:
     return TranslationEvent(kind=TranslationEventKind.SESSION_STOPPED)
 
 
-def test_partial_grows_cumulatively_and_bumps_revision() -> None:
+def test_output_fragments_are_appended_into_one_caption() -> None:
+    # Confirmed against real Gemini Live output on 2026-08-09: each
+    # output_transcription carries only the newly translated fragment.
     a = CaptionAssembler()
-    first = a.accept(output("你", finished=False))
-    second = a.accept(output("你好", finished=False))
+    first = a.accept(output("自然的、", finished=False))
+    second = a.accept(output("真實的對話。", finished=False))
     assert first is not None and first.status is CaptionStatus.PARTIAL
-    assert first.text == "你"
+    assert first.text == "自然的、"
     assert first.revision == 1
-    assert second is not None and second.text == "你好"
+    assert second is not None and second.text == "自然的、真實的對話。"
     assert second.revision == 2
 
 
-def test_repeated_partial_is_deduped_without_revision_bump() -> None:
+def test_repeated_fragment_is_appended_not_deduplicated() -> None:
+    # With delta fragments an identical payload is new speech, not a repeat.
     a = CaptionAssembler()
-    a.accept(output("你好", finished=False))
-    current = a.current()
-    again = a.accept(output("你好", finished=False))
-    assert again is None
-    assert a.current() is current
-    assert a.current().revision == current.revision
+    a.accept(output("好", finished=False))
+    again = a.accept(output("好", finished=False))
+    assert again is not None
+    assert again.text == "好好"
 
 
-def test_final_promotes_to_final_and_replaceable_by_next_partial() -> None:
+def test_finished_fragment_promotes_to_final() -> None:
     a = CaptionAssembler()
     a.accept(output("你好", finished=False))
-    final = a.accept(output("你好", finished=True))
-    assert final is not None and final.status is CaptionStatus.FINAL
+    final = a.accept(output("嗎？", finished=True))
+    assert final is not None
+    assert final.status is CaptionStatus.FINAL
+    assert final.text == "你好嗎？"
+
+
+def test_fragment_after_final_starts_a_new_caption() -> None:
+    a = CaptionAssembler()
+    a.accept(output("你好。", finished=True))
     partial = a.accept(output("再見", finished=False))
-    assert partial is not None and partial.status is CaptionStatus.PARTIAL
+    assert partial is not None
+    assert partial.status is CaptionStatus.PARTIAL
     assert partial.text == "再見"
 
 
-def test_final_with_same_text_is_visible_status_change() -> None:
-    a = CaptionAssembler()
-    a.accept(output("你好", finished=False))
-    before = a.current().revision
-    final = a.accept(output("你好", finished=True))
-    assert final is not None
-    assert final.revision == before + 1
+def test_caption_keeps_the_most_recent_payload_window() -> None:
+    # Trim from the front: an appended caption must never freeze once it
+    # reaches the payload limit.
+    a = CaptionAssembler(max_payload_length=5)
+    a.accept(output("一二三", finished=False))
+    state = a.accept(output("四五六", finished=False))
+    assert state is not None
+    assert state.text == "二三四五六"
+
+
+def test_oversized_single_fragment_keeps_its_tail() -> None:
+    a = CaptionAssembler(max_payload_length=5)
+    state = a.accept(output("一二三四五六七八", finished=False))
+    assert state is not None
+    assert state.text == "四五六七八"
 
 
 def test_empty_output_text_is_ignored() -> None:
@@ -69,6 +86,12 @@ def test_empty_output_text_is_ignored() -> None:
     empty = a.accept(output("", finished=False))
     assert empty is None
     assert a.current() is current
+
+
+def test_whitespace_only_fragment_does_not_start_a_caption() -> None:
+    a = CaptionAssembler()
+    assert a.accept(output("   ", finished=False)) is None
+    assert a.current().status is CaptionStatus.IDLE
 
 
 def test_none_text_is_ignored() -> None:
@@ -114,6 +137,15 @@ def test_session_start_retains_confirmed_final() -> None:
     assert reset.session_generation == 1
 
 
+def test_fragment_after_session_reset_starts_a_new_caption() -> None:
+    a = CaptionAssembler()
+    a.accept(output("你好", finished=False))
+    a.accept(started())
+    state = a.accept(output("再見", finished=False))
+    assert state is not None
+    assert state.text == "再見"
+
+
 def test_session_stop_clears_partial_but_keeps_final() -> None:
     a = CaptionAssembler()
     a.accept(output("你好", finished=False))
@@ -123,12 +155,6 @@ def test_session_stop_clears_partial_but_keeps_final() -> None:
     a.accept(stopped())
     assert a.current().status is CaptionStatus.FINAL
     assert a.current().text == "固定"
-
-
-def test_oversized_partial_is_truncated() -> None:
-    a = CaptionAssembler(max_payload_length=5)
-    state = a.accept(output("abcdefgh", finished=False))
-    assert state is not None and state.text == "abcde"
 
 
 def test_control_characters_are_sanitized() -> None:
