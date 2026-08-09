@@ -1,0 +1,1 @@
+"""Canonical caption state shared by the web overlay and vMix output."""

@@ -35,6 +35,9 @@ _GEMINI_KEYS = {
     "echo_target_language",
     "session_rotation_seconds",
 }
+_CAPTION_KEYS = {
+    "max_payload_length",
+}
 
 
 class ConfigurationError(ValueError):
@@ -56,6 +59,7 @@ def load_settings(
         settings = _deep_merge(settings, runtime_overrides)
     _validate_audio_settings(settings)
     _validate_gemini_settings(settings)
+    _validate_caption_settings(settings)
     return settings
 
 
@@ -190,6 +194,32 @@ def _validate_gemini_settings(settings: Settings) -> None:
         raise ConfigurationError(
             "gemini.session_rotation_seconds 必須是 60 到 540 之間的整數。"
         )
+
+
+def _validate_caption_settings(settings: Settings) -> None:
+    caption = settings.get("caption")
+    if caption is None:
+        return
+    if not isinstance(caption, Mapping):
+        raise ConfigurationError("caption 必須是 mapping。")
+
+    unknown_fields = set(caption) - _CAPTION_KEYS
+    if unknown_fields:
+        field = min(str(item) for item in unknown_fields)
+        raise ConfigurationError(f"不支援或尚未接線的設定欄位：caption.{field}")
+
+    if not _is_bounded_int(
+        caption.get("max_payload_length"), minimum=1, maximum=100_000
+    ):
+        raise ConfigurationError(
+            "caption.max_payload_length 必須是 1 到 100000 之間的整數。"
+        )
+
+
+def caption_max_payload_length(settings: Settings) -> int:
+    """Return the validated caption payload limit (defaults to 4096)."""
+    caption = settings.get("caption") or {}
+    return int(caption.get("max_payload_length", 4096))
 
 
 def _require_fixed_audio_int(

@@ -1,8 +1,9 @@
-# ExternalTranslate — Stage 2 交接狀態 (status.md)
+# ExternalTranslate — Stage 3 交接狀態 (status.md)
 
-> 本文件供後續 model／agent 快速接手。最後更新：2026-08-03。
+> 本文件供後續 model／agent 快速接手。最後更新：2026-08-09。
 > 閱讀本檔前，請先重讀 `AGENTS.md`、`BUILD.md`、`PLAN.md` 與
-> `.hermes/plans/2026-08-02-stage-2-gemini-live.md`。
+> `.hermes/plans/2026-08-09_123446-stage-3-captions.md`、
+> `.hermes/plans/2026-08-09_124912-stage-3.2-observability.md`。
 
 ---
 
@@ -12,17 +13,19 @@
 |---|---|
 | 專案根目錄 | `C:\Users\razer\Documents\HermesWorkspace\ExternalTranslate` |
 | Branch / remote | `main` → `origin/main` (`github.com/konicatc-techcoding/externaltranslate.git`) |
-| 已發布 HEAD | `b0a0a6a059536bac4313bc8b4a861012ce52f141` (`feat(audio): add input and WASAPI loopback capture`) |
+| 已發布 HEAD | `cedaf07`（`docs(plan): mark Stage 0-2 complete…`）；Stage 3 提交後將更新 |
 | Python | 3.11，套件管理 `uv`；Windows Git Bash |
-| 關鍵執行規則 | 所有 Python／uv 指令必須 `PYTHONPATH=''` |
+| 關鍵執行規則 | 所有 Python／uv 指令必須 `PYTHONPATH=''`；證實 backend 需 canonical `uv run pytest -W error` |
 
 ### 完成並已發布
 - **Stage 0**：骨架、依賴盤點、安全邊界。
 - **Stage 1**：Windows input capture、meter、16 kHz mono PCM16、100 ms chunk、bounded drop-oldest queue。
 - **Stage 1.2**：WASAPI loopback、render endpoint 列舉、stereo downmix、source XOR、真實硬體驗收、commit + push。
+- **Stage 2**：官方 `google-genai` Gemini Live Translate、provider-neutral events、安全 CLI、長期 AudioSource／外層 session supervisor；177 tests、3 輪 independent review、真實 Gemini smoke（input 23／output 22），commit + push（`ac5934e`）。
+- **Stage 3（已實作＋驗證，本 commit）**：`backend/app/captions/`（models／sanitizer／assembler／store）組裝 canonical `CaptionState`；`caption.max_payload_length` strict schema；**215 passed**、Ruff/Mypy clean、audit 0（已修 `nanoid` patch advisory）。
 
-### Stage 2（進行中）
-官方 `google-genai` Gemini Live Translate adapter、provider-neutral events、安全 CLI、外層長期 AudioSource／內層 session supervisor。**尚未驗收、尚未 commit、尚未 push。**
+### 下一步：Stage 3.2 Observability
+計劃檔：`.hermes/plans/2026-08-09_124912-stage-3.2-observability.md`。runtime 元件狀態（audio/gemini_provider/gemini_session/caption_sink）與 structured log，CLI `--status-events`，供 Stage 4 UI 消費。Stage 3.2 純 backend，不需 API key 或硬體。
 
 ---
 

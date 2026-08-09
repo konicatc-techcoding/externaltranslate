@@ -4,7 +4,11 @@ from pathlib import Path
 
 import pytest
 
-from backend.app.config import ConfigurationError, load_settings
+from backend.app.config import (
+    ConfigurationError,
+    caption_max_payload_length,
+    load_settings,
+)
 
 
 def test_load_settings_applies_default_user_and_runtime_priority(tmp_path: Path) -> None:
@@ -290,3 +294,47 @@ def test_load_settings_enforces_input_xor_loopback_selection(
             default_path=default_path,
             runtime_overrides={"audio": audio_override},
         )
+
+
+def test_load_settings_accepts_valid_caption_and_helper_returns_value(
+    tmp_path: Path,
+) -> None:
+    default_path = tmp_path / "default.yaml"
+    default_path.write_text(
+        "caption:\n  max_payload_length: 2048\n", encoding="utf-8"
+    )
+
+    settings = load_settings(default_path=default_path)
+    assert caption_max_payload_length(settings) == 2048
+
+
+def test_load_settings_rejects_caption_non_mapping(tmp_path: Path) -> None:
+    default_path = tmp_path / "default.yaml"
+    default_path.write_text("caption: 4096\n", encoding="utf-8")
+
+    with pytest.raises(ConfigurationError, match="caption 必須是 mapping"):
+        load_settings(default_path=default_path)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [0, -1, 1_000_001, True, 3.5],
+)
+def test_load_settings_rejects_invalid_max_payload_length(
+    tmp_path: Path, value: object
+) -> None:
+    default_path = tmp_path / "default.yaml"
+    default_path.write_text(f"caption:\n  max_payload_length: {value}\n", encoding="utf-8")
+
+    with pytest.raises(ConfigurationError, match="max_payload_length"):
+        load_settings(default_path=default_path)
+
+
+def test_load_settings_rejects_unknown_caption_field(tmp_path: Path) -> None:
+    default_path = tmp_path / "default.yaml"
+    default_path.write_text(
+        "caption:\n  max_payload_length: 4096\n  line_width: 3\n", encoding="utf-8"
+    )
+
+    with pytest.raises(ConfigurationError, match="caption.line_width"):
+        load_settings(default_path=default_path)
