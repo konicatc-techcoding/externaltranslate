@@ -17,11 +17,21 @@ from backend.app.audio.sources.wasapi_loopback import (
     LoopbackCaptureError,
     LoopbackDeviceError,
 )
-from backend.app.config import ConfigurationError, load_settings
+from backend.app.captions.assembler import CaptionAssembler, CaptionEventSink
+from backend.app.captions.models import CaptionState, CaptionStatus
+from backend.app.captions.store import CaptionStore
+from backend.app.config import (
+    ConfigurationError,
+    caption_max_payload_length,
+    load_settings,
+)
 from backend.app.services.translation_pipeline import (
     TranslationPipeline,
     TranslationPipelineError,
 )
+from backend.app.status.models import Component, ComponentState, StatusReason
+from backend.app.status.publisher import StatusPublisher, status_payload
+from backend.app.status.store import StatusStore
 from backend.app.translation.base import TranslationProvider, TranslationProviderError
 from backend.app.translation.gemini_live import GeminiLiveProvider
 from backend.app.translation.models import TranslationEvent, TranslationEventKind
@@ -125,6 +135,67 @@ def render_event(
     return payload
 
 
+def caption_payload(state: CaptionState, *, show_text: bool) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "status": "caption",
+        "caption_status": state.status.value,
+        "revision": state.revision,
+        "language_code": state.language_code,
+        "text_length": len(state.text),
+        "session_generation": state.session_generation,
+    }
+    if show_text:
+        payload["text"] = state.text
+    return payload
+
+
+_CAPTION_SINK_STATES: dict[CaptionStatus, tuple[ComponentState, StatusReason]] = {
+    CaptionStatus.PARTIAL: (ComponentState.ACTIVE, StatusReason.PARTIAL),
+    CaptionStatus.FINAL: (ComponentState.ACTIVE, StatusReason.FINAL),
+    CaptionStatus.IDLE: (ComponentState.RESET, StatusReason.RESET),
+}
+
+
+def create_caption_observer(
+    settings: Mapping[str, Any],
+    *,
+    emit: Callable[[dict[str, Any]], None] | None = None,
+    show_text: bool = False,
+    status_publisher: StatusPublisher | None = None,
+) -> Callable[[TranslationEvent], Any]:
+    """Build the canonical caption path for this CLI run.
+
+    The payload limit comes from validated settings — this composition root is
+    where `caption.max_payload_length` becomes effective. Captions stay in
+    memory; only metadata is emitted unless the caller opted into text.
+    """
+    assembler = CaptionAssembler(
+        max_payload_length=caption_max_payload_length(settings)
+    )
+    store = CaptionStore()
+    sink = CaptionEventSink(assembler, store)
+
+    async def observe(event: TranslationEvent) -> None:
+        before = store.snapshot()
+        await sink(event)
+        state = store.snapshot()
+        if state is before:
+            return
+        if emit is not None:
+            emit(caption_payload(state, show_text=show_text))
+        if status_publisher is not None:
+            component_state, reason = _CAPTION_SINK_STATES[state.status]
+            status_publisher.publish(
+                Component.CAPTION_SINK,
+                component_state,
+                reason=reason,
+                generation=state.session_generation,
+                text_length=len(state.text),
+            )
+
+    return observe
+
+
 class _Pipeline(Protocol):
     async def run(
         self,
@@ -140,6 +211,7 @@ def create_pipeline(
     settings: Mapping[str, Any],
     *,
     pipeline_factory: Callable[..., _Pipeline] = TranslationPipeline,
+    status_publisher: StatusPublisher | None = None,
 ) -> _Pipeline:
     gemini = settings.get("gemini")
     if not isinstance(gemini, Mapping):
@@ -149,7 +221,10 @@ def create_pipeline(
         session_rotation_seconds, int
     ):
         raise GeminiSmokeError("Gemini session rotation設定尚未完成驗證。")
-    return pipeline_factory(session_rotation_seconds=session_rotation_seconds)
+    return pipeline_factory(
+        session_rotation_seconds=session_rotation_seconds,
+        status_publisher=status_publisher,
+    )
 
 
 async def run_translation_smoke(
@@ -160,6 +235,7 @@ async def run_translation_smoke(
     show_text: bool,
     emit: Callable[[dict[str, Any]], None],
     pipeline: _Pipeline | None = None,
+    caption_observer: Callable[[TranslationEvent], Any] | None = None,
 ) -> dict[str, int]:
     if duration_seconds <= 0:
         raise GeminiSmokeError("duration必須大於0秒。")
@@ -186,6 +262,8 @@ async def run_translation_smoke(
             ):
                 valid_output_received = True
         emit(render_event(event, show_text=show_text))
+        if caption_observer is not None:
+            await caption_observer(event)
 
     async def stop_after_duration() -> None:
         await asyncio.sleep(duration_seconds)
@@ -230,6 +308,8 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--channel", type=int)
     parser.add_argument("--duration", type=float, default=20.0)
     parser.add_argument("--show-text", action="store_true")
+    parser.add_argument("--status-events", action="store_true")
+    parser.add_argument("--caption-state", action="store_true")
     return parser
 
 
@@ -256,10 +336,25 @@ def main(
         )
         api_key = resolve_api_key(environ, prompt=prompt)
         source, provider = create_runtime(settings, api_key=api_key)
-        pipeline = create_pipeline(settings)
 
         def emit_event(payload: dict[str, Any]) -> None:
             emit(json.dumps(payload, ensure_ascii=False))
+
+        status_publisher: StatusPublisher | None = None
+        if args.status_events:
+            status_publisher = StatusPublisher(
+                StatusStore(),
+                sink=lambda status: emit_event(status_payload(status)),
+            )
+        caption_observer = None
+        if args.caption_state or args.status_events:
+            caption_observer = create_caption_observer(
+                settings,
+                emit=emit_event if args.caption_state else None,
+                show_text=args.show_text,
+                status_publisher=status_publisher,
+            )
+        pipeline = create_pipeline(settings, status_publisher=status_publisher)
 
         report = asyncio.run(
             run_translation_smoke(
@@ -269,6 +364,7 @@ def main(
                 show_text=args.show_text,
                 emit=emit_event,
                 pipeline=pipeline,
+                caption_observer=caption_observer,
             )
         )
         emit(

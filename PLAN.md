@@ -517,6 +517,19 @@ python -m mypy backend/app/captions
 
 把已驗證的底層能力接到可操作的最小 UI，完成 v0.1。UI 只做必要控制和真實字幕預覽，不先製作完整設計系統或 vMix 頁面。
 
+### 從 Stage 3.2 帶入的待辦（2026-08-09 決議）
+
+- **adapter 補送 session 事件**：`backend/app/translation/gemini_live.py` 目前只在 GoAway 時送
+  `SESSION_EXPIRING`，從不送 `SESSION_STARTED`／`SESSION_STOPPED`，因此 `CaptionState` 的
+  `session_generation` 永遠是 0。rotation 仍會靠 `SESSION_EXPIRING` 清除未確認 partial，功能
+  不受影響，但 UI 若要用 generation 辨識換線就必須先補上。此改動會動到 Stage 2 已通過 review
+  的 adapter 與其事件序列測試，需連同 UI 需求一起設計並重跑真實 smoke。
+- **caption 設定接線**：建立 WebSocket/UI 的 caption pipeline 時，assembler 一律以
+  `caption_max_payload_length(settings)` 建立（比照 `backend/app/cli/gemini_smoke.py` 的
+  `create_caption_observer()`），不得沿用 `CaptionAssembler` 的預設值。
+- **revision 語意**：session 邊界保留 confirmed final 時 `revision` 不遞增、只更新 `updated_at`
+  （刻意的防閃爍設計）。UI 若以 revision 判斷重繪，該筆更新會被忽略。
+
 ### 預計檔案
 
 ```text
@@ -623,6 +636,11 @@ npm --prefix frontend run test:e2e
 - 滑動窗口。
 - partial/final 樣式區分。
 - 中英文、emoji、combining character 測試。
+- **句尾標點收束規則**（Stage 3.2 真實 smoke 後決議，2026-08-09）：Gemini Live 在連續語音下
+  幾乎不送 `finished=true`（實測 23 筆 output 全為 interim），字幕會一直維持 partial。是否以
+  `。！？.!?` 之類的句尾標點把累積文字升級為 final、由下一個片段開新字幕，留待此 Stage 連同
+  斷句與滑動視窗一起設計；在看到實際 overlay 之前不先猜規則。Stage 3.2 維持只有
+  `finished=true` 與 session 邊界會收束字幕。
 
 ### 預計檔案
 

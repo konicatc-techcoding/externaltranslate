@@ -216,7 +216,7 @@ def _validate_caption_settings(settings: Settings) -> None:
         )
 
 
-def caption_max_payload_length(settings: Settings) -> int:
+def caption_max_payload_length(settings: Mapping[str, Any]) -> int:
     """Return the validated caption payload limit (defaults to 4096)."""
     caption = settings.get("caption") or {}
     return int(caption.get("max_payload_length", 4096))

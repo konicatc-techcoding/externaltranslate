@@ -19,4 +19,5 @@ def test_create_pipeline_wires_validated_session_rotation_seconds() -> None:
     )
 
     assert result is expected
-    assert captured == {"session_rotation_seconds": 480}
+    # status publishing is opt-in: no --status-events means no publisher.
+    assert captured == {"session_rotation_seconds": 480, "status_publisher": None}

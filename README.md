@@ -16,8 +16,14 @@ ExternalTranslate 是 Windows 本機優先的即時翻譯字幕應用程式。�
   Automated tests已涵蓋8分鐘主動rotation、GoAway換線、錯誤分類與bounded backoff；
   真實Gemini smoke已通過並完成驗收。
 - **Stage 3**：`backend/app/captions/`（models／sanitizer／assembler／store）把
-  provider-neutral `TranslationEvent` 組裝成canonical `CaptionState`（partial/final、去重、
+  provider-neutral `TranslationEvent` 組裝成canonical `CaptionState`（partial/final、
   空白處理、session reset保留final），並新增`caption.max_payload_length` strict schema。
+  Gemini Live的output transcription為**增量片段**，assembler會累加片段；累積文字超過
+  `caption.max_payload_length`時保留最新的尾端，不會停在上限。
+- **Stage 3.2（驗證中）**：`backend/app/status/`（models／store／publisher）提供runtime元件
+  狀態與sanitized structured log，session supervisor在連線、rotation、backoff與fail-closed
+  時發布狀態；CLI新增`--status-events`與`--caption-state`。真實Gemini smoke尚未完成前，
+  不視為Stage 3.2驗收通過。
 
 目前不會：
 
@@ -215,6 +221,29 @@ CLI預設只輸出transcription metadata，不輸出完整文字；只有使用�
 `zh-Hant`的output transcription（含即時interim）即回報成功——這是因為連續語音下
 Gemini Live Translate主要送出`finished=false`的即時字幕；僅connect成功、空白輸出或
 只收到input transcription都不算通過。
+
+### 觀察運行狀態與字幕狀態
+
+```bash
+uv run externaltranslate-gemini-smoke \
+  --source-kind wasapi_loopback --duration 30 \
+  --status-events --caption-state
+```
+
+`--status-events`會為每次元件狀態轉移輸出一行JSON：`audio_source`（starting／running／
+stopping／stopped／error）、`gemini_provider`（connecting／connected／backoff／fail_closed／
+stopped）、`gemini_session`（active／rotating／stopped，含generation與rotation原因
+`timer`／`goaway`）與`caption_sink`（active／reset）。狀態只包含metadata：component、state、
+revision與白名單欄位（generation、reason、attempt、delay_seconds、rotation_seconds、
+text_length），永遠不含字幕文字、API key、裝置識別或SDK原始錯誤內容；同一份sanitized紀錄
+也會寫入`externaltranslate.status` logger。
+
+`--caption-state`輸出canonical `CaptionState`（revision、caption_status、language_code、
+text_length、session_generation），字幕文字仍只有在加上`--show-text`時才會顯示。字幕
+payload上限來自validated設定`caption.max_payload_length`，只存在記憶體，不寫入逐字稿檔案。
+
+Permanent的authentication／permission／policy錯誤會讓`gemini_provider`停在`fail_closed`，
+不會被後續的`stopped`覆蓋，避免把不可恢復的credential問題顯示成正常結束。
 
 AudioSource在整個pipeline只start一次。Gemini session預設每480秒主動換新連線，收到
 server GoAway會提前換線；retryable connect/send/receive/EOF錯誤採

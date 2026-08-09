@@ -6,6 +6,8 @@ from contextlib import suppress
 from typing import Any
 
 from backend.app.audio.sources.base import AudioSource
+from backend.app.status.models import Component, ComponentState, StatusReason
+from backend.app.status.publisher import StatusPublisher
 from backend.app.translation.base import (
     TranslationEventSink,
     TranslationProvider,
@@ -30,6 +32,7 @@ class TranslationPipeline:
         session_rotation_seconds: float = 480.0,
         reconnect_delays: tuple[float, ...] = (0.5, 1.0, 2.0, 4.0, 5.0),
         reconnect_waiter: ReconnectWaiter | None = None,
+        status_publisher: StatusPublisher | None = None,
     ) -> None:
         if pcm_poll_timeout <= 0:
             raise ValueError("pcm_poll_timeout 必須大於 0。")
@@ -41,6 +44,25 @@ class TranslationPipeline:
         self._session_rotation_seconds = session_rotation_seconds
         self._reconnect_delays = reconnect_delays
         self._reconnect_waiter = reconnect_waiter or self._wait_for_stop
+        self._status_publisher = status_publisher
+
+    def _publish(
+        self,
+        component: Component,
+        state: ComponentState,
+        **fields: Any,
+    ) -> None:
+        """Best-effort status publish.
+
+        Observability must never take the translation pipeline down, so a
+        failing status backend is swallowed here. Publishing happens on the
+        supervisor path only — never inside an audio callback.
+        """
+        publisher = self._status_publisher
+        if publisher is None:
+            return
+        with suppress(Exception):
+            publisher.publish(component, state, **fields)
 
     async def run(
         self,
@@ -58,13 +80,20 @@ class TranslationPipeline:
         stop_failed = False
         reader_failed = False
         try:
+            self._publish(Component.AUDIO_SOURCE, ComponentState.STARTING)
             try:
                 await asyncio.to_thread(source.start)
             except Exception:
                 primary_error = TranslationPipelineError(
                     "音訊來源啟動失敗；請重新列舉裝置並確認driver、連線與選擇設定。"
                 )
+                self._publish(
+                    Component.AUDIO_SOURCE,
+                    ComponentState.ERROR,
+                    reason=StatusReason.ERROR,
+                )
             if primary_error is None:
+                self._publish(Component.AUDIO_SOURCE, ComponentState.RUNNING)
                 reader = asyncio.create_task(
                     self._read_audio(source, pcm_queue, reader_stop),
                     name="translation-pcm-reader",
@@ -88,10 +117,22 @@ class TranslationPipeline:
         finally:
             reader_stop.set()
             if source_start_attempted:
+                self._publish(Component.AUDIO_SOURCE, ComponentState.STOPPING)
                 try:
                     await asyncio.to_thread(source.stop)
                 except Exception:
                     stop_failed = True
+                    self._publish(
+                        Component.AUDIO_SOURCE,
+                        ComponentState.ERROR,
+                        reason=StatusReason.ERROR,
+                    )
+                else:
+                    self._publish(
+                        Component.AUDIO_SOURCE,
+                        ComponentState.STOPPED,
+                        reason=StatusReason.STOP,
+                    )
             if reader is not None:
                 reader_result = (await asyncio.gather(reader, return_exceptions=True))[0]
                 reader_failed = isinstance(reader_result, BaseException) and not isinstance(
@@ -124,54 +165,106 @@ class TranslationPipeline:
         event_sink: TranslationEventSink,
     ) -> None:
         reconnect_attempt = 0
-        while not stop_event.is_set():
-            if reader.done():
-                reader_error: TranslationPipelineError | None = None
+        generation = 0
+        terminal_published = False
+        try:
+            while not stop_event.is_set():
+                if reader.done():
+                    reader_error: TranslationPipelineError | None = None
+                    try:
+                        await reader
+                    except Exception:
+                        reader_error = TranslationPipelineError(
+                            "PCM reader已失敗；已停止Gemini session重連。"
+                        )
+                    if reader_error is not None:
+                        raise reader_error
+                    raise TranslationPipelineError(
+                        "PCM reader非預期結束；已停止Gemini session重連。"
+                    )
+                mapped_error: TranslationPipelineError | None = None
+                terminal_state = ComponentState.ERROR
+                self._publish(
+                    Component.GEMINI_PROVIDER,
+                    ComponentState.CONNECTING,
+                    attempt=reconnect_attempt + 1,
+                )
                 try:
-                    await reader
+                    async with provider.connect() as session:
+                        generation += 1
+                        self._publish(
+                            Component.GEMINI_PROVIDER,
+                            ComponentState.CONNECTED,
+                            generation=generation,
+                        )
+                        self._publish(
+                            Component.GEMINI_SESSION,
+                            ComponentState.ACTIVE,
+                            generation=generation,
+                            rotation_seconds=self._session_rotation_seconds,
+                        )
+                        outcome = await self._run_session(
+                            pcm_queue=pcm_queue,
+                            reader=reader,
+                            session=session,
+                            stop_event=stop_event,
+                            event_sink=event_sink,
+                            generation=generation,
+                        )
+                except TranslationPipelineError:
+                    raise
+                except TranslationProviderError as exc:
+                    if not exc.retryable:
+                        terminal_state = ComponentState.FAIL_CLOSED
+                        mapped_error = TranslationPipelineError(
+                            "Gemini翻譯連線無法恢復；請檢查API權限與設定。"
+                        )
+                    else:
+                        delay = self._reconnect_delays[
+                            min(reconnect_attempt, len(self._reconnect_delays) - 1)
+                        ]
+                        reconnect_attempt += 1
+                        self._publish(
+                            Component.GEMINI_PROVIDER,
+                            ComponentState.BACKOFF,
+                            attempt=reconnect_attempt,
+                            delay_seconds=delay,
+                            reason=StatusReason.ERROR,
+                        )
+                        if await self._reconnect_waiter(stop_event, delay):
+                            return
+                        continue
                 except Exception:
-                    reader_error = TranslationPipelineError(
-                        "PCM reader已失敗；已停止Gemini session重連。"
-                    )
-                if reader_error is not None:
-                    raise reader_error
-                raise TranslationPipelineError(
-                    "PCM reader非預期結束；已停止Gemini session重連。"
-                )
-            mapped_error: TranslationPipelineError | None = None
-            try:
-                async with provider.connect() as session:
-                    outcome = await self._run_session(
-                        pcm_queue=pcm_queue,
-                        reader=reader,
-                        session=session,
-                        stop_event=stop_event,
-                        event_sink=event_sink,
-                    )
-            except TranslationPipelineError:
-                raise
-            except TranslationProviderError as exc:
-                if not exc.retryable:
                     mapped_error = TranslationPipelineError(
-                        "Gemini翻譯連線無法恢復；請檢查API權限與設定。"
+                        "Gemini provider非預期失敗；已停止以避免洩漏SDK錯誤內容。"
                     )
-                else:
-                    delay = self._reconnect_delays[
-                        min(reconnect_attempt, len(self._reconnect_delays) - 1)
-                    ]
-                    reconnect_attempt += 1
-                    if await self._reconnect_waiter(stop_event, delay):
-                        return
-                    continue
-            except Exception:
-                mapped_error = TranslationPipelineError(
-                    "Gemini provider非預期失敗；已停止以避免洩漏SDK錯誤內容。"
+                if mapped_error is not None:
+                    # fail_closed / error must stay the visible provider state,
+                    # so the teardown publish below is suppressed.
+                    self._publish(
+                        Component.GEMINI_PROVIDER,
+                        terminal_state,
+                        reason=StatusReason.ERROR,
+                    )
+                    terminal_published = True
+                    raise mapped_error
+                reconnect_attempt = 0
+                if outcome == "stop":
+                    return
+        finally:
+            if not terminal_published:
+                if generation > 0:
+                    self._publish(
+                        Component.GEMINI_SESSION,
+                        ComponentState.STOPPED,
+                        generation=generation,
+                        reason=StatusReason.STOP,
+                    )
+                self._publish(
+                    Component.GEMINI_PROVIDER,
+                    ComponentState.STOPPED,
+                    reason=StatusReason.STOP,
                 )
-            if mapped_error is not None:
-                raise mapped_error
-            reconnect_attempt = 0
-            if outcome == "stop":
-                return
 
     async def _run_session(
         self,
@@ -181,6 +274,7 @@ class TranslationPipeline:
         session: TranslationSession,
         stop_event: asyncio.Event,
         event_sink: TranslationEventSink,
+        generation: int = 0,
     ) -> str:
         sender = asyncio.create_task(
             self._send_audio(pcm_queue, session), name="translation-audio-sender"
@@ -225,6 +319,12 @@ class TranslationPipeline:
                     outcome = "stop"
                 else:
                     outcome = "rotate"
+                    self._publish(
+                        Component.GEMINI_SESSION,
+                        ComponentState.ROTATING,
+                        generation=generation,
+                        reason=StatusReason.TIMER,
+                    )
 
             if primary_task is not None:
                 try:
@@ -240,6 +340,12 @@ class TranslationPipeline:
                 else:
                     if primary_task is receiver and worker_outcome == "rotate":
                         outcome = "rotate"
+                        self._publish(
+                            Component.GEMINI_SESSION,
+                            ComponentState.ROTATING,
+                            generation=generation,
+                            reason=StatusReason.GOAWAY,
+                        )
                     else:
                         primary_error = TranslationPipelineError(
                             "Gemini翻譯工作非預期結束；請檢查網路與API服務狀態。"

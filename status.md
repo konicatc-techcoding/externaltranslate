@@ -1,6 +1,6 @@
-# ExternalTranslate — Stage 3 交接狀態 (status.md)
+# ExternalTranslate — Stage 3.2 交接狀態 (status.md)
 
-> 本文件供後續 model／agent 快速接手。最後更新：2026-08-09。
+> 本文件供後續 model／agent 快速接手。最後更新：2026-08-09（Stage 3.2 實作與真實 smoke）。
 > 閱讀本檔前，請先重讀 `AGENTS.md`、`BUILD.md`、`PLAN.md` 與
 > `.hermes/plans/2026-08-09_123446-stage-3-captions.md`、
 > `.hermes/plans/2026-08-09_124912-stage-3.2-observability.md`。
@@ -24,8 +24,68 @@
 - **Stage 2**：官方 `google-genai` Gemini Live Translate、provider-neutral events、安全 CLI、長期 AudioSource／外層 session supervisor；177 tests、3 輪 independent review、真實 Gemini smoke（input 23／output 22），commit + push（`ac5934e`）。
 - **Stage 3（已實作＋驗證，已 commit + push `c618fb4`）**：`backend/app/captions/`（models／sanitizer／assembler／store）組裝 canonical `CaptionState`；`caption.max_payload_length` strict schema；**215 passed**、Ruff/Mypy clean、audit 0（已修 `nanoid` patch advisory）。
 
-### 下一步：Stage 3.2 Observability
-計劃檔：`.hermes/plans/2026-08-09_124912-stage-3.2-observability.md`。runtime 元件狀態（audio/gemini_provider/gemini_session/caption_sink）與 structured log，CLI `--status-events`，供 Stage 4 UI 消費。Stage 3.2 純 backend，不需 API key 或硬體。
+### Stage 3.2（已實作＋真實 smoke 通過，**尚未 commit**）
+計劃檔：`.hermes/plans/2026-08-09_124912-stage-3.2-observability.md`（`.hermes/` 被 `.gitignore` 排除，不入 Git）。
+
+- 新增 `backend/app/status/`（models／store／publisher）：component/state/reason 三個 StrEnum、
+  frozen `ComponentStatus`、`RuntimeStatusSnapshot`、memory-only `StatusStore`（store 自己蓋
+  monotonic revision，`updated_at` 倒退 fail closed）。
+- **Publisher 不接受自由文字**：`detail` 由白名單欄位（generation／reason／attempt／
+  delay_seconds／rotation_seconds／text_length）組成，`reason` 只能是列舉值。傳 `text=`／
+  `api_key=`／`transcript=` 直接 `StatusError`，逐字稿與 credential 在型別層就進不了 log/payload。
+  這比計劃的 `detail: str` 更嚴，是刻意加嚴。
+- `TranslationPipeline` 新增選用 `status_publisher`，於 supervisor 路徑（非 audio callback）發布
+  audio／provider／session 狀態；發布為 best-effort，publisher 失敗不影響翻譯。
+  **`fail_closed` 不會被 teardown 的 `stopped` 覆蓋**。
+- CLI 新增 `--status-events`、`--caption-state`；`create_caption_observer()` 以
+  `caption_max_payload_length(settings)` 建 assembler，**Stage 3 遺留的「validated 但沒接線」已補齊**。
+  caption 狀態發布放在 CLI composition root，`captions` 套件不依賴 `status` 套件（Stage 4 照此接 WebSocket）。
+
+### ⚠️ 真實 smoke 的關鍵發現（2026-08-09）
+
+**1. output transcription 是 delta，不是 cumulative — Stage 3 的核心假設錯誤，已修正。**
+實測片段依序為「自然的、」→「真實的對話。」→「我們希望」→「英語感覺很有」…，串接後才是完整句子
+（input 側同樣是 delta，帶前導空白）。原 `CaptionAssembler` 用 replace 語意，字幕只會顯示最後一個
+片段。已改為 **append**：
+- 片段累加；`finished=True` 收尾為 final，下一個片段開新字幕。
+- 累積文字超過 `max_payload_length` 時**保留尾端**（`sanitize_caption` 的截斷方向也一併改為保留尾端），
+  否則連續語音會在上限處凍結不再更新。
+- delta 語意下無法以「文字相同」去重（相同片段是新語音），原 dedup 規則移除；空字串／純空白仍忽略。
+
+**2. `finished=true` 一次都沒出現**（`finished_output_events: 0`，23 筆 output 全為 interim）。
+字幕實務上會一直停在 partial，只有 session 邊界才會收束。句尾標點是否應該升級為 final 屬產品決策，
+留給 Stage 3.1 一併處理（見下方待決）。
+
+**3. `caption_sink` 的 `session_generation` 永遠是 0。**
+`backend/app/translation/gemini_live.py` 只在 GoAway 時送 `SESSION_EXPIRING`，**從不送
+`SESSION_STARTED`／`SESSION_STOPPED`**，所以 assembler 的 generation 永遠不遞增。rotation 時仍會靠
+`SESSION_EXPIRING` 清掉未確認 partial，功能不受影響，但 Stage 4 UI 想用 generation 辨識換線就會失效。
+建議修法：由 adapter 在 session 建立／結束時送出對應事件（會動到 Stage 2 已通過 review 的程式與其測試）。
+**尚未實作，待使用者決定放 Stage 3.2 或 Stage 4。**
+
+### 修正後的確認 smoke（2026-08-09，第二次真實執行）
+指令：`--source-kind wasapi_loopback --duration 30 --status-events --caption-state --show-text`
+（loopback，英文連續語音；逐字稿內容不記錄於本檔）。
+
+- `{"status": "ok", "summary": {"input_transcription_events": 27, "output_transcription_events": 27, "finished_output_events": 0}}`
+- **append 修正成立**：caption `text_length` 由 7 單調累積到 118，`revision` 1→27，
+  且**每一筆的長度增量都等於該筆 output fragment 的長度**（27/27 完全吻合），
+  代表沒有漏接、沒有重複累加、也沒有插入多餘字元。
+- caption `revision` 27 = output 事件數 27，每筆 output 都造成一次可見變化。
+- Status 序列完整且 revision 1→36 單調：
+  `audio starting→running`、`provider connecting(attempt=1)→connected(generation=1)`、
+  `session active(generation=1 rotation_seconds=480.0)`、`caption_sink active(reason=partial)`×27、
+  收尾 `session stopped→provider stopped→audio stopping→stopped`，皆為 metadata，無文字外洩。
+- `finished_output_events` 仍為 0，`caption_sink` 的 `generation` 仍為 0——與上述發現 2、3 一致，
+  已分別延到 Stage 3.1 與 Stage 4。
+
+### 已決議（2026-08-09，使用者拍板）
+- **發現 3（adapter 補送 session 事件）→ 延到 Stage 4**，已記入 `PLAN.md` Stage 4 的
+  「從 Stage 3.2 帶入的待辦」。理由：現在功能不受影響，且會動到 Stage 2 已過 review 的 adapter，
+  等 UI 真正需要 generation 時連同需求一起設計。
+- **發現 2（句尾標點升級 final）→ 延到 Stage 3.1**，已記入 `PLAN.md` Stage 3.1 能力清單。
+  理由：斷句規則要看到實際 overlay 才決定得準。Stage 3.2 維持只有 `finished=true` 與 session
+  邊界會收束字幕。
 
 ---
 
