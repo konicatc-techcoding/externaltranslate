@@ -13,7 +13,7 @@
 |---|---|
 | 專案根目錄 | `C:\Users\razer\Documents\HermesWorkspace\ExternalTranslate` |
 | Branch / remote | `main` → `origin/main` (`github.com/konicatc-techcoding/externaltranslate.git`) |
-| 已發布 HEAD | `c618fb4`（`feat(captions): …`，Stage 3 commit）；隨後 docs(status) 更新 |
+| 已發布 HEAD | `6691416`（`docs(status): record Stage 3 acceptance and release`）；Stage 3 實作為前一個 commit `c618fb4`（`feat(captions): …`） |
 | Python | 3.11，套件管理 `uv`；Windows Git Bash |
 | 關鍵執行規則 | 所有 Python／uv 指令必須 `PYTHONPATH=''`；證實 backend 需 canonical `uv run pytest -W error` |
 
@@ -22,7 +22,7 @@
 - **Stage 1**：Windows input capture、meter、16 kHz mono PCM16、100 ms chunk、bounded drop-oldest queue。
 - **Stage 1.2**：WASAPI loopback、render endpoint 列舉、stereo downmix、source XOR、真實硬體驗收、commit + push。
 - **Stage 2**：官方 `google-genai` Gemini Live Translate、provider-neutral events、安全 CLI、長期 AudioSource／外層 session supervisor；177 tests、3 輪 independent review、真實 Gemini smoke（input 23／output 22），commit + push（`ac5934e`）。
-- **Stage 3（已實作＋驗證，本 commit）**：`backend/app/captions/`（models／sanitizer／assembler／store）組裝 canonical `CaptionState`；`caption.max_payload_length` strict schema；**215 passed**、Ruff/Mypy clean、audit 0（已修 `nanoid` patch advisory）。
+- **Stage 3（已實作＋驗證，已 commit + push `c618fb4`）**：`backend/app/captions/`（models／sanitizer／assembler／store）組裝 canonical `CaptionState`；`caption.max_payload_length` strict schema；**215 passed**、Ruff/Mypy clean、audit 0（已修 `nanoid` patch advisory）。
 
 ### 下一步：Stage 3.2 Observability
 計劃檔：`.hermes/plans/2026-08-09_124912-stage-3.2-observability.md`。runtime 元件狀態（audio/gemini_provider/gemini_session/caption_sink）與 structured log，CLI `--status-events`，供 Stage 4 UI 消費。Stage 3.2 純 backend，不需 API key 或硬體。
@@ -165,7 +165,7 @@ PYTHONPATH='' .venv/Scripts/externaltranslate-audio-devices.exe
 
 1. `cd C:\Users\razer\Documents\HermesWorkspace\ExternalTranslate`
 2. 重讀 `AGENTS.md`、`BUILD.md`、`PLAN.md`、`status.md`、`.hermes/plans/2026-08-02-stage-2-gemini-live.md`。
-3. `git status --short --branch` 確認 working tree（目前有多個 Stage 2 未提交檔案）。
+3. `git status --short --branch` 確認 working tree（目前 clean，`main` 與 `origin/main` 同步於 `6691416`）。
 4. 從 §4 依序修 blocking 問題（TDD：先 RED 後 GREEN）。
 5. 跑 §4.4 的完整 gates。
 6. 派新一輪 independent fail-closed review。

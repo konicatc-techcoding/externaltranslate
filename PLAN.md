@@ -763,16 +763,20 @@ Stage 0、Stage 1、Stage 1.2 與 Stage 2 已完成並通過驗證與發布：
   session supervisor（480 秒 rotation、GoAway、bounded backoff、fail-closed、唯一 persistent
   PCM reader）、安全 smoke CLI；177 tests、3 輪 independent review 通過、真實 Gemini smoke
   （input 23 / output 22）通過，已 commit + push（`ac5934e`）。
-- **Stage 3（已實作，待 review/commit）**：`backend/app/captions/`（models／sanitizer／
+- **Stage 3（已完成並發布）**：`backend/app/captions/`（models／sanitizer／
   assembler／store），把 `TranslationEvent` 組裝成 canonical `CaptionState`（partial/final、
   去重、empty、session reset 保留 final）。config 新增 `caption.max_payload_length` strict
-  schema。全量 **215 passed**、Ruff/Mypy clean、audit 0（已修 `nanoid` patch advisory）。
+  schema。全量 **215 passed**、Ruff/Mypy clean、audit 0（已修 `nanoid` patch advisory），
+  已 commit + push（`c618fb4`）。
 
 下一個可執行工作是 **Stage 3.2：Runtime Component Status & Observability**。已在
-`.hermes/plans/2026-08-09_124912-stage-3.2-observability.md` 有細部計劃，提供元件狀態與
-structured log（Gemini 連線/session/rotation）。通過 review 後由 supervisor 發布並以 CLI
-`--status-events` 顯示。此 Stage 純為字幕組裝，不需 API key 或硬體。
+`.hermes/plans/2026-08-09_124912-stage-3.2-observability.md` 有細部計劃，新增
+`backend/app/status/`（models／store／publisher），提供 runtime 元件狀態
+（audio_source／gemini_provider／gemini_session／caption_sink）與 sanitized structured log
+（Gemini 連線／session generation／rotation reason／backoff／fail-closed）。由 session
+supervisor 注入 publisher 發布，並以 CLI `--status-events` 顯示，供 Stage 4 UI 消費。
+此 Stage 純 backend observability，不需 API key 或硬體。
 
 ```text
-Stage 3（完成待 review）→ Stage 3.2 Observability
+Stage 3（已發布）→ Stage 3.2 Observability
 ```

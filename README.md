@@ -11,10 +11,13 @@ ExternalTranslate 是 Windows 本機優先的即時翻譯字幕應用程式。�
   轉換、100 ms chunk、bounded queue 與重複 Start/Stop。
 - **Stage 1.2**：Windows WASAPI system-output loopback、render endpoint列舉、
   stereo downmix、default-output resolution、source XOR與真實Start/Stop/switch。
-- **Stage 2（驗證中）**：官方`google-genai` Live Translate adapter、provider-neutral
+- **Stage 2**：官方`google-genai` Live Translate adapter、provider-neutral
   transcription events、安全CLI，以及持續AudioSource外層的Gemini session supervisor。
   Automated tests已涵蓋8分鐘主動rotation、GoAway換線、錯誤分類與bounded backoff；
-  真實Gemini smoke尚未完成前，不視為Stage 2驗收通過。
+  真實Gemini smoke已通過並完成驗收。
+- **Stage 3**：`backend/app/captions/`（models／sanitizer／assembler／store）把
+  provider-neutral `TranslationEvent` 組裝成canonical `CaptionState`（partial/final、去重、
+  空白處理、session reset保留final），並新增`caption.max_payload_length` strict schema。
 
 目前不會：
 
