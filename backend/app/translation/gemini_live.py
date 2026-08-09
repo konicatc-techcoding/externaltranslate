@@ -128,6 +128,11 @@ class GeminiLiveSession:
 
     async def receive_events(self) -> AsyncIterator[TranslationEvent]:
         mapped_error: TranslationProviderError | None = None
+        # A session boundary is what lets downstream caption state advance its
+        # generation and drop stale partials. The matching SESSION_STOPPED is
+        # emitted by the pipeline, which owns session teardown: an async
+        # generator cannot yield from its own cleanup path.
+        yield TranslationEvent(kind=TranslationEventKind.SESSION_STARTED)
         try:
             while True:
                 received_message = False

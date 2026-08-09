@@ -93,7 +93,9 @@ def test_pipeline_streams_pcm_and_closes_source_and_session() -> None:
         assert source.stopped == 1
         assert session.sent == [b"\x01\x00" * 1600]
         assert session.closed is True
-        assert [event.text for event in events] == ["你好"]
+        # the supervisor closes the session boundary after the transcription
+        assert [event.text for event in events] == ["你好", None]
+        assert events[-1].kind is TranslationEventKind.SESSION_STOPPED
 
     asyncio.run(scenario())
 

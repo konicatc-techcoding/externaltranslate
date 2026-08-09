@@ -464,6 +464,8 @@ def test_session_maps_transcriptions_and_discards_translated_audio() -> None:
         session = GeminiLiveSession(FakeSdkSession([message]))
 
         event_stream = session.receive_events()
+        # the leading session_started boundary is consumed first
+        assert (await anext(event_stream)).kind.value == "session_started"
         events = [await anext(event_stream) for _ in range(3)]
         await event_stream.aclose()
 
@@ -542,6 +544,7 @@ def test_session_receives_transcriptions_across_multiple_model_turns() -> None:
     async def scenario() -> None:
         events = GeminiLiveSession(MultiTurnSession()).receive_events()
 
+        assert (await anext(events)).kind.value == "session_started"
         first = await anext(events)
         second = await anext(events)
         await events.aclose()

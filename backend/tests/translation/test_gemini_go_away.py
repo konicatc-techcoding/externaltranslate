@@ -35,8 +35,11 @@ def test_session_maps_go_away_to_provider_neutral_expiring_event() -> None:
         session = GeminiLiveSession(GoAwaySdkSession())
         event_stream = session.receive_events()
 
+        started = await asyncio.wait_for(anext(event_stream), timeout=0.05)
         event = await asyncio.wait_for(anext(event_stream), timeout=0.05)
         await event_stream.aclose()
+
+        assert started.kind is TranslationEventKind.SESSION_STARTED
 
         assert event.kind is TranslationEventKind.SESSION_EXPIRING
         assert event.text is None

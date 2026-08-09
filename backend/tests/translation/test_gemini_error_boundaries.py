@@ -72,8 +72,10 @@ def test_receive_policy_error_is_permanent_and_raw_detail_is_detached() -> None:
             )
         )
 
+        stream = session.receive_events()
+        assert (await anext(stream)).kind.value == "session_started"
         with pytest.raises(TranslationProviderError) as caught:
-            await anext(session.receive_events())
+            await anext(stream)
 
         assert_safe_error(caught.value, expected_retryable=False)
 

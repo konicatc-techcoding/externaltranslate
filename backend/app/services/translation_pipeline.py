@@ -14,7 +14,7 @@ from backend.app.translation.base import (
     TranslationProviderError,
     TranslationSession,
 )
-from backend.app.translation.models import TranslationEventKind
+from backend.app.translation.models import TranslationEvent, TranslationEventKind
 
 
 class TranslationPipelineError(RuntimeError):
@@ -203,14 +203,20 @@ class TranslationPipeline:
                             generation=generation,
                             rotation_seconds=self._session_rotation_seconds,
                         )
-                        outcome = await self._run_session(
-                            pcm_queue=pcm_queue,
-                            reader=reader,
-                            session=session,
-                            stop_event=stop_event,
-                            event_sink=event_sink,
-                            generation=generation,
-                        )
+                        try:
+                            outcome = await self._run_session(
+                                pcm_queue=pcm_queue,
+                                reader=reader,
+                                session=session,
+                                stop_event=stop_event,
+                                event_sink=event_sink,
+                                generation=generation,
+                            )
+                        finally:
+                            # The provider yields SESSION_STARTED but cannot
+                            # yield on teardown, so the supervisor closes the
+                            # boundary for every session, including failed ones.
+                            await self._emit_session_stopped(event_sink)
                 except TranslationPipelineError:
                     raise
                 except TranslationProviderError as exc:
@@ -265,6 +271,14 @@ class TranslationPipeline:
                     ComponentState.STOPPED,
                     reason=StatusReason.STOP,
                 )
+
+    @staticmethod
+    async def _emit_session_stopped(event_sink: TranslationEventSink) -> None:
+        """Best effort: a failing sink must not mask the session's own error."""
+        with suppress(Exception):
+            await event_sink(
+                TranslationEvent(kind=TranslationEventKind.SESSION_STOPPED)
+            )
 
     async def _run_session(
         self,

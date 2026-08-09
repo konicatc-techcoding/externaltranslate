@@ -83,8 +83,11 @@ def test_pipeline_rotates_immediately_after_go_away_event() -> None:
         )
 
         assert len(provider.sessions) == 2
+        # each session ends with a supervisor-emitted stop boundary
         assert [event.kind for event in events] == [
-            TranslationEventKind.SESSION_EXPIRING
+            TranslationEventKind.SESSION_EXPIRING,
+            TranslationEventKind.SESSION_STOPPED,
+            TranslationEventKind.SESSION_STOPPED,
         ]
         assert source.started == 1
         assert source.stopped == 1
