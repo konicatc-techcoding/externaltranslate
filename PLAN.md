@@ -750,18 +750,24 @@ Modify: README.md
 
 ## 4. 目前下一步
 
-Stage 0 與 Stage 1 已完成並通過驗證。Stage 1 已建立 `INPUT_DEVICE` adapter、
-Windows input endpoint 列舉、non-blocking callback handoff、RMS/peak meter、
-44.1/48 kHz 至 16 kHz mono PCM16 little-endian streaming conversion、固定 100 ms
-chunk、bounded drop-oldest queue、繁體中文錯誤與可重複 Start/Stop。真實 Windows
-WASAPI input endpoint已完成10秒 capture、WAV/byte-format 與 handle
-release/restart smoke test。Stage 1 未呼叫 Gemini、未啟用 vMix，也未實作系統輸出
-loopback。
+Stage 0、Stage 1、Stage 1.2 與 Stage 2 已完成並通過驗證與發布：
 
-Stage 1.2 已完成主要實作與第一輪實機smoke，目前正在修正 independent fail-closed
-review findings。下一個可執行工作是完成修正、重跑實機smoke與第二輪獨立review；通過後
-停止並等待使用者批准Stage 2。
+- **Stage 0**：專案骨架、依賴盤點與安全邊界。
+- **Stage 1**：`INPUT_DEVICE` adapter、Windows input 列舉、non-blocking callback handoff、
+  RMS/peak meter、streaming resample 至 16 kHz mono PCM16 little-endian、固定 100 ms chunk、
+  bounded drop-oldest queue、繁體中文錯誤與可重複 Start/Stop；真實 WASAPI input 實機 smoke 通過。
+- **Stage 1.2**：`WASAPI_LOOPBACK` render endpoint 列舉、default-output resolution、
+  多聲道 downmix、`INPUT_DEVICE XOR WASAPI_LOOPBACK` atomic source switch；真實 loopback
+  10 秒實機（100 chunks／320,000 bytes／440 Hz）與 source-switch smoke 通過。
+- **Stage 2**：官方 `google-genai` Gemini Live Translate adapter、permanent AudioSource 外層的
+  session supervisor（480 秒 rotation、GoAway、bounded backoff、fail-closed、唯一 persistent
+  PCM reader）、安全 smoke CLI；177 tests、3 輪 independent review 通過、真實 Gemini smoke
+  （input 23 / output 22）通過，已 commit + push（`ac5934e`）。
+
+下一個可執行工作是 **Stage 3：Transcript Assembler 與 Canonical CaptionState**。先在 Stage 3
+prerequisite 依真實 Gemini 事件確認 delta／cumulative 語意，再以 TDD 建立 `CaptionState`、
+partial/final 合併、session reset 與 payload 限制；完成後停止並等待使用者批准 Stage 4。
 
 ```text
-Stage 1.2：review remediation與重新驗收
+Stage 3：Transcript Assembler 與 Canonical CaptionState
 ```
