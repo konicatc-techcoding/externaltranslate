@@ -13,7 +13,7 @@
 |---|---|
 | 專案根目錄 | `C:\Users\razer\Documents\HermesWorkspace\ExternalTranslate` |
 | Branch / remote | `main` → `origin/main` (`github.com/konicatc-techcoding/externaltranslate.git`) |
-| 已發布 HEAD | `cedaf07`（`docs(plan): mark Stage 0-2 complete…`）；Stage 3 提交後將更新 |
+| 已發布 HEAD | `c618fb4`（`feat(captions): …`，Stage 3 commit）；隨後 docs(status) 更新 |
 | Python | 3.11，套件管理 `uv`；Windows Git Bash |
 | 關鍵執行規則 | 所有 Python／uv 指令必須 `PYTHONPATH=''`；證實 backend 需 canonical `uv run pytest -W error` |
 
