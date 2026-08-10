@@ -106,6 +106,34 @@ describe("App", () => {
     );
   });
 
+  it("上次的音訊裝置找不到時說明原因", async () => {
+    // Falling back to no selection without a word reads as the setting having
+    // been forgotten, and the operator would just pick a device at random.
+    const sockets: SilentSocket[] = [];
+    vi.stubGlobal(
+      "WebSocket",
+      class extends SilentSocket {
+        constructor() {
+          super();
+          sockets.push(this);
+        }
+      },
+    );
+
+    render(<App pathname="/" />);
+    await waitFor(() => expect(sockets.length).toBe(1));
+    sockets[0].onmessage?.({
+      data: JSON.stringify({
+        ...IDLE_RUNTIME_STATUS,
+        audio_notice: "找不到上次使用的音訊裝置「Scarlett 2i2 USB」，已改為未選擇；請重新選擇音訊來源。",
+      }),
+    });
+
+    expect(
+      await screen.findByText(/找不到上次使用的音訊裝置/),
+    ).toBeInTheDocument();
+  });
+
   it("/overlay 只顯示字幕，沒有任何控制項", () => {
     const { container } = render(<App pathname="/overlay" />);
 

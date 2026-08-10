@@ -70,6 +70,16 @@ select {
   background: #3a1c1c;
 }
 
+/* A restored setting that could not be honoured: worth reading, but not a
+   failure the operator has to fix before anything works. */
+.panel__notice {
+  padding: 0.75rem 1rem;
+  border: 1px solid #7d6a2f;
+  border-radius: 0.5rem;
+  color: #ffe9a8;
+  background: #3a331c;
+}
+
 .field-row {
   display: flex;
   flex-wrap: wrap;

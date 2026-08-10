@@ -179,6 +179,12 @@ export function ControlPage() {
         }}
       />
 
+      {status.audio_notice !== null ? (
+        <p role="status" className="panel__notice">
+          {status.audio_notice}
+        </p>
+      ) : null}
+
       {settings !== null ? (
         <AudioSourceSelector
           settings={settings}

@@ -58,6 +58,8 @@ export interface RuntimeStatus {
   caption: CaptionPayload;
   meter: MeterPayload | null;
   last_error: string | null;
+  /** Why the audio source saved last time could not be restored, if it could not. */
+  audio_notice: string | null;
 }
 
 export interface PrerequisiteItem {
@@ -138,6 +140,7 @@ export const IDLE_RUNTIME_STATUS: RuntimeStatus = {
   },
   meter: null,
   last_error: null,
+  audio_notice: null,
 };
 
 export interface CaptionPreset {
