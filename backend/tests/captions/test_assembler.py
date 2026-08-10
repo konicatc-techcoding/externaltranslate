@@ -157,6 +157,31 @@ def test_session_stop_clears_partial_but_keeps_final() -> None:
     assert a.current().text == "固定"
 
 
+def test_reset_clears_the_caption_but_keeps_revisions_monotonic() -> None:
+    # A new run must not restart revisions: a CaptionStore that outlives the
+    # run rejects a regression, which would break the second Start.
+    a = CaptionAssembler()
+    a.accept(output("你好", finished=True))
+    before = a.current()
+
+    cleared = a.reset()
+
+    assert cleared.status is CaptionStatus.IDLE
+    assert cleared.text == ""
+    assert cleared.revision > before.revision
+    assert a.current() is cleared
+
+
+def test_fragments_after_reset_accumulate_from_empty() -> None:
+    a = CaptionAssembler()
+    a.accept(output("舊的", finished=True))
+    a.reset()
+    state = a.accept(output("新的", finished=False))
+
+    assert state is not None
+    assert state.text == "新的"
+
+
 def test_control_characters_are_sanitized() -> None:
     a = CaptionAssembler()
     state = a.accept(output("你\x00好\x1b", finished=False))

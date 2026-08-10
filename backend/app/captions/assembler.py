@@ -48,6 +48,23 @@ class CaptionAssembler:
     def current(self) -> CaptionState:
         return self._state
 
+    def reset(self) -> CaptionState:
+        """Clear the caption for a new run, keeping the revision monotonic.
+
+        A `CaptionStore` may outlive the run and rejects a revision that goes
+        backwards, so a new run continues the counter instead of restarting it.
+        """
+        state = self._state
+        self._state = CaptionState(
+            revision=state.revision + 1,
+            status=CaptionStatus.IDLE,
+            text="",
+            language_code=state.language_code,
+            updated_at=self._now(),
+            session_generation=state.session_generation,
+        )
+        return self._state
+
     def accept(self, event: TranslationEvent) -> CaptionState | None:
         if event.kind is TranslationEventKind.OUTPUT_TRANSCRIPTION:
             return self._accept_output(event)
