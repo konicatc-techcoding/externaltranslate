@@ -11,6 +11,7 @@ from backend.app.translation.models import TranslationEvent, TranslationEventKin
 
 DEFAULT_CHARS_PER_LINE = 20
 DEFAULT_MAX_LINES = 2
+DEFAULT_SENTENCE_BREAKS = True
 
 _Now = Callable[[], float]
 
@@ -49,11 +50,13 @@ class CaptionAssembler:
         max_payload_length: int = 4096,
         chars_per_line: int = DEFAULT_CHARS_PER_LINE,
         max_lines: int = DEFAULT_MAX_LINES,
+        sentence_breaks: bool = DEFAULT_SENTENCE_BREAKS,
         now: _Now | None = None,
     ) -> None:
         self._max_payload_length = max_payload_length
         self._chars_per_line = chars_per_line
         self._max_lines = max_lines
+        self._sentence_breaks = sentence_breaks
         self._now = now or time.monotonic
         self._state = CaptionState.initial()
 
@@ -65,9 +68,16 @@ class CaptionAssembler:
             text,
             chars_per_line=self._chars_per_line,
             max_lines=self._max_lines,
+            sentence_breaks=self._sentence_breaks,
         )
 
-    def set_layout(self, *, chars_per_line: int, max_lines: int) -> CaptionState:
+    def set_layout(
+        self,
+        *,
+        chars_per_line: int,
+        max_lines: int,
+        sentence_breaks: bool = DEFAULT_SENTENCE_BREAKS,
+    ) -> CaptionState:
         """Re-flow the current caption for a new layout, without interrupting.
 
         The revision advances so downstream sockets push the new wrapping;
@@ -77,6 +87,7 @@ class CaptionAssembler:
             raise ValueError("chars_per_line 與 max_lines 必須大於 0。")
         self._chars_per_line = chars_per_line
         self._max_lines = max_lines
+        self._sentence_breaks = sentence_breaks
         state = self._state
         self._state = CaptionState(
             revision=state.revision + 1,

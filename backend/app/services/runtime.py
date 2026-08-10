@@ -34,6 +34,7 @@ from backend.app.config import (
     ConfigurationError,
     caption_layout,
     caption_max_payload_length,
+    caption_sentence_breaks,
     caption_style,
     save_user_settings,
 )
@@ -85,6 +86,7 @@ class RuntimeSnapshot:
     last_error: str | None
     elapsed_seconds: float
     layout: tuple[int, int]
+    sentence_breaks: bool
     style: dict[str, Any]
     audio_notice: str | None
 
@@ -176,6 +178,7 @@ class PipelineRuntime:
             max_payload_length=caption_max_payload_length(self._settings),
             chars_per_line=chars_per_line,
             max_lines=max_lines,
+            sentence_breaks=caption_sentence_breaks(self._settings),
         )
         self._caption_sink = CaptionEventSink(
             self._caption_assembler, self._caption_store
@@ -354,7 +357,9 @@ class PipelineRuntime:
         """Why the saved audio source could not be restored, if it could not."""
         return self._audio_notice
 
-    def update_caption_layout(self, *, chars_per_line: int, max_lines: int) -> None:
+    def update_caption_layout(
+        self, *, chars_per_line: int, max_lines: int, sentence_breaks: bool
+    ) -> None:
         """Change the display layout, re-flowing immediately.
 
         Deliberately allowed while running: unlike the audio source, adjusting
@@ -375,10 +380,13 @@ class PipelineRuntime:
         caption = dict(self._settings.get("caption") or {})
         caption["chars_per_line"] = chars_per_line
         caption["max_lines"] = max_lines
+        caption["sentence_breaks"] = sentence_breaks
         self._settings["caption"] = caption
 
         state = self._caption_assembler.set_layout(
-            chars_per_line=chars_per_line, max_lines=max_lines
+            chars_per_line=chars_per_line,
+            max_lines=max_lines,
+            sentence_breaks=sentence_breaks,
         )
         self._caption_store.commit(state)
         self._persist_caption_settings()
@@ -419,6 +427,7 @@ class PipelineRuntime:
             name=name.strip(),
             chars_per_line=chars_per_line,
             max_lines=max_lines,
+            sentence_breaks=caption_sentence_breaks(self._settings),
             **caption_style(self._settings),
         )
 
@@ -431,7 +440,9 @@ class PipelineRuntime:
             }
         )
         self.update_caption_layout(
-            chars_per_line=preset.chars_per_line, max_lines=preset.max_lines
+            chars_per_line=preset.chars_per_line,
+            max_lines=preset.max_lines,
+            sentence_breaks=preset.sentence_breaks,
         )
 
     def _persist_caption_settings(self) -> None:
@@ -451,6 +462,7 @@ class PipelineRuntime:
             "caption": {
                 "chars_per_line": chars_per_line,
                 "max_lines": max_lines,
+                "sentence_breaks": caption_sentence_breaks(self._settings),
                 **caption_style(self._settings),
                 "max_payload_length": caption.get("max_payload_length", 4096),
             }
@@ -614,6 +626,7 @@ class PipelineRuntime:
         return RuntimeSnapshot(
             elapsed_seconds=self.elapsed_seconds,
             layout=caption_layout(self._settings),
+            sentence_breaks=caption_sentence_breaks(self._settings),
             style=caption_style(self._settings),
             running=self.running,
             status=self._status_store.snapshot(),

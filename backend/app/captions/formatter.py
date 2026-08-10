@@ -15,6 +15,20 @@ _WIDE = frozenset("WF")
 # on its own line; this keeps the guarantee bounded and testable.
 _PUNCTUATION_OVERFLOW = 2
 
+# Sentence ends, full-width only. A half-width "." appears in decimals and
+# abbreviations ("3.5 公里", "Mr. Chen"), and translated output is Traditional
+# Chinese, so accepting it would split numbers far more often than sentences.
+_SENTENCE_END = frozenset("。！？")
+
+# Marks that belong to the sentence they follow: 「…。」 ends after the quote.
+_SENTENCE_TRAILING = frozenset("」』）】》〉”’\"'")
+
+# A sentence starting with less than this much room left gets a line of its
+# own. Measured in remaining full-width characters rather than as a fraction
+# of the line: at 60 characters per line, "past two thirds" would abandon up
+# to 20 characters of usable space.
+SENTENCE_BREAK_MIN_CHARS = 4
+
 
 def display_width(text: str) -> int:
     """Return the caption width of ``text`` in display columns.
@@ -32,6 +46,41 @@ def display_width(text: str) -> int:
 def _is_breakable_before(char: str) -> bool:
     """Latin words stay whole; CJK may break between any two characters."""
     return unicodedata.east_asian_width(char) in _WIDE or char.isspace()
+
+
+def _sentence_cut(text: str, budget: int) -> int | None:
+    """Where to end the line so the next sentence is not cramped, if anywhere.
+
+    Only what is already on screen decides this. Whether the *next* sentence
+    would fit in the remaining space cannot be used: captions arrive as
+    fragments, so that sentence is usually still being typed, and a decision
+    that changed as it grew would make finished lines re-break under the
+    reader.
+    """
+    index = 0
+    width = 0
+    while index < len(text):
+        width += display_width(text[index])
+        if width > budget:
+            return None  # the line fills up before any sentence ends
+        if text[index] not in _SENTENCE_END:
+            index += 1
+            continue
+
+        end = index + 1
+        while end < len(text) and text[end] in _SENTENCE_TRAILING:
+            trailing = display_width(text[end])
+            if width + trailing > budget:
+                break
+            width += trailing
+            end += 1
+
+        if end >= len(text):
+            return None  # the sentence ends the caption; nothing to push down
+        if budget - width < SENTENCE_BREAK_MIN_CHARS * 2:
+            return end
+        index = end  # room to spare: keep this sentence's neighbour company
+    return None
 
 
 def _split_line(text: str, budget: int) -> tuple[str, str]:
@@ -73,7 +122,11 @@ def _split_line(text: str, budget: int) -> tuple[str, str]:
 
 
 def wrap_caption(
-    text: str, *, chars_per_line: int, max_lines: int
+    text: str,
+    *,
+    chars_per_line: int,
+    max_lines: int,
+    sentence_breaks: bool = True,
 ) -> tuple[str, ...]:
     """Break ``text`` into display lines and keep the most recent ones.
 
@@ -98,7 +151,11 @@ def wrap_caption(
     for paragraph in text.split("\n"):
         remainder = paragraph.strip()
         while remainder:
-            line, remainder = _split_line(remainder, budget)
+            cut = _sentence_cut(remainder, budget) if sentence_breaks else None
+            if cut is None:
+                line, remainder = _split_line(remainder, budget)
+            else:
+                line, remainder = remainder[:cut], remainder[cut:]
             lines.append(line.rstrip())
             remainder = remainder.lstrip(" ")
 

@@ -39,6 +39,7 @@ class CaptionPreset:
     color: str
     scroll: bool
     scroll_ms: int
+    sentence_breaks: bool = True
     weight: str = "normal"
     outline_width: int = 0
     outline_color: str = "#000000"
@@ -60,6 +61,8 @@ def _validate(preset: CaptionPreset) -> None:
         raise PresetError("每行字數超出允許範圍。")
     if not _in_range(preset.max_lines, MAX_LINES_RANGE):
         raise PresetError("行數超出允許範圍。")
+    if not isinstance(preset.sentence_breaks, bool):
+        raise PresetError("句尾換行設定必須是 boolean。")
     # Appearance is checked against the same spec the settings API uses, so a
     # preset can never carry a value the runtime would refuse to apply.
     for field in CAPTION_STYLE_FIELDS:

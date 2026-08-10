@@ -39,7 +39,12 @@ _GEMINI_KEYS = {
     "echo_target_language",
     "session_rotation_seconds",
 }
-_CAPTION_LAYOUT_KEYS = {"max_payload_length", "chars_per_line", "max_lines"}
+_CAPTION_LAYOUT_KEYS = {
+    "max_payload_length",
+    "chars_per_line",
+    "max_lines",
+    "sentence_breaks",
+}
 
 # Display layout bounds; a caption narrower than 4 full-width characters or
 # taller than 10 lines is not a caption any consumer can use.
@@ -47,6 +52,9 @@ CHARS_PER_LINE_RANGE = (4, 60)
 MAX_LINES_RANGE = (1, 10)
 DEFAULT_CHARS_PER_LINE = 20
 DEFAULT_MAX_LINES = 2
+# On by default: sentences running into each other is not something anyone
+# configured, it is just what happened before the rule existed.
+DEFAULT_SENTENCE_BREAKS = True
 
 # Font choices are a closed whitelist: the playout machine must have the font
 # installed or the browser silently falls back, which looks like the setting
@@ -461,6 +469,11 @@ def _validate_caption_settings(settings: Settings) -> None:
             f"{MAX_LINES_RANGE[1]} 之間的整數。"
         )
 
+    if "sentence_breaks" in caption and not isinstance(
+        caption.get("sentence_breaks"), bool
+    ):
+        raise ConfigurationError("caption.sentence_breaks 必須是 boolean。")
+
     _validate_caption_style(caption)
 
 
@@ -486,6 +499,12 @@ def caption_style(settings: Mapping[str, Any]) -> dict[str, Any]:
         # keeps "did this change?" from depending on how it was typed.
         style[field.name] = value.upper() if _is_hex_color(value) else value
     return style
+
+
+def caption_sentence_breaks(settings: Mapping[str, Any]) -> bool:
+    """Whether a sentence ending near the line edge starts a new line."""
+    caption = settings.get("caption") or {}
+    return bool(caption.get("sentence_breaks", DEFAULT_SENTENCE_BREAKS))
 
 
 def caption_layout(settings: Mapping[str, Any]) -> tuple[int, int]:

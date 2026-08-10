@@ -87,6 +87,7 @@ class SettingsResponse(StrictModel):
     caption_max_payload_length: int
     caption_chars_per_line: int
     caption_max_lines: int
+    caption_sentence_breaks: bool
     caption_style: CaptionStyle
     session_rotation_seconds: int
 
@@ -96,6 +97,7 @@ class CaptionLayoutUpdate(StrictModel):
 
     chars_per_line: int = Field(ge=CHARS_PER_LINE_RANGE[0], le=CHARS_PER_LINE_RANGE[1])
     max_lines: int = Field(ge=MAX_LINES_RANGE[0], le=MAX_LINES_RANGE[1])
+    sentence_breaks: bool = True
 
 
 class CaptionStyleUpdate(CaptionStyle):
@@ -168,6 +170,8 @@ class MeterPayload(StrictModel):
 class CaptionLayout(StrictModel):
     chars_per_line: int
     max_lines: int
+    #: A sentence ending near the line edge starts the next one on a new line.
+    sentence_breaks: bool = True
 
 
 class RuntimeStatusResponse(StrictModel):
@@ -192,6 +196,7 @@ class CaptionPresetItem(CaptionStyle):
     name: str
     chars_per_line: int
     max_lines: int
+    sentence_breaks: bool = True
 
 
 class CaptionPresetList(StrictModel):

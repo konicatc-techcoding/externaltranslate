@@ -125,6 +125,7 @@ def test_settings_expose_only_non_secret_fields(client: TestClient) -> None:
         "caption_max_payload_length": 4096,
         "caption_chars_per_line": 20,
         "caption_max_lines": 2,
+        "caption_sentence_breaks": True,
         "caption_style": DEFAULT_STYLE,
         "session_rotation_seconds": 480,
     }
@@ -272,3 +273,22 @@ def _raise_device_error() -> list[AudioDeviceInfo]:
     from backend.app.audio.devices import AudioDeviceError
 
     raise AudioDeviceError("裝置列舉失敗；請重新插拔並確認driver。")
+
+
+def test_sentence_breaks_can_be_turned_off_through_the_api(
+    client: TestClient,
+) -> None:
+    response = client.put(
+        "/api/settings/caption-layout",
+        json={"chars_per_line": 20, "max_lines": 2, "sentence_breaks": False},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["caption_sentence_breaks"] is False
+    # It reflows the caption, so it belongs with the layout rather than with
+    # appearance — the status snapshot has to carry it too.
+    assert client.get("/api/pipeline/status").json()["layout"] == {
+        "chars_per_line": 20,
+        "max_lines": 2,
+        "sentence_breaks": False,
+    }

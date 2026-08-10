@@ -12,6 +12,9 @@ caption:
   max_payload_length: 4096
   chars_per_line: 20
   max_lines: 2
+  # A sentence ending with less than 4 full-width characters of room left
+  # starts the next one on a new line.
+  sentence_breaks: true
   font: jhenghei
   size: 48
   weight: normal

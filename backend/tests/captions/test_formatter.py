@@ -118,3 +118,68 @@ class TestInvariants:
         text = "一二三四五六七八九十" * 10
         for max_lines in (1, 2, 5):
             assert len(wrap(text, chars=4, lines=max_lines)) <= max_lines
+
+
+def test_a_sentence_ending_near_the_edge_pushes_the_next_one_to_a_new_line() -> None:
+    # 16 full-width characters then 。 leaves 3 characters of room on a
+    # 20-character line: not enough to start a sentence in.
+    text = "一二三四五六七八九十一二三四五六。下一句開始"
+
+    lines = wrap_caption(text, chars_per_line=20, max_lines=5)
+
+    assert lines[0] == "一二三四五六七八九十一二三四五六。"
+    assert lines[1] == "下一句開始"
+
+
+def test_a_sentence_ending_early_keeps_the_next_one_on_the_same_line() -> None:
+    # Plenty of room left, so breaking would waste most of the line.
+    text = "今天天氣很好。我們開始"
+
+    lines = wrap_caption(text, chars_per_line=20, max_lines=5)
+
+    assert lines == ("今天天氣很好。我們開始",)
+
+
+def test_the_threshold_is_measured_in_remaining_space_not_a_fraction() -> None:
+    # On a 60-character line a sentence ending at character 41 still leaves 19
+    # characters — a fraction-of-the-line rule would throw those away.
+    text = "一二三四五六七八九十" * 4 + "。" + "接著這一句還很長"
+
+    lines = wrap_caption(text, chars_per_line=60, max_lines=5)
+
+    assert lines[0].startswith("一二三四")
+    assert "接著這一句還很長" in lines[0]
+
+
+def test_only_full_width_sentence_marks_count() -> None:
+    # A half-width period appears in decimals and abbreviations; treating it
+    # as a sentence end would break "3.5 公里" in half.
+    text = "距離是 3.5 公里再往前走一點就到了目的地了"
+
+    lines = wrap_caption(text, chars_per_line=8, max_lines=5)
+
+    assert not any(line.endswith("3.") for line in lines)
+
+
+def test_a_closing_bracket_stays_with_the_sentence_it_ends() -> None:
+    text = "他說「我們準備好了。」下一句從這裡開始"
+
+    lines = wrap_caption(text, chars_per_line=12, max_lines=5)
+
+    assert lines[0].endswith("」")
+
+
+def test_sentence_breaks_can_be_turned_off() -> None:
+    text = "一二三四五六七八九十一二三四五六。下一句開始"
+
+    lines = wrap_caption(
+        text, chars_per_line=20, max_lines=5, sentence_breaks=False
+    )
+
+    assert lines[0] != "一二三四五六七八九十一二三四五六。"
+
+
+def test_a_sentence_ending_the_text_does_not_leave_a_blank_line() -> None:
+    lines = wrap_caption("很長的一句話講完了。", chars_per_line=10, max_lines=5)
+
+    assert lines == ("很長的一句話講完了。",)

@@ -413,7 +413,7 @@ def test_caption_settings_persist_for_the_next_start(tmp_path: Any) -> None:
     user_settings = tmp_path / "user.yaml"
     runtime, _created, _provider = _runtime(user_settings_path=user_settings)
 
-    runtime.update_caption_layout(chars_per_line=12, max_lines=4)
+    runtime.update_caption_layout(chars_per_line=12, max_lines=4, sentence_breaks=True)
     runtime.update_caption_style(
         {
             "font": "kai",
@@ -445,7 +445,7 @@ def test_persistence_never_writes_the_api_key(tmp_path: Any) -> None:
     runtime, _created, _provider = _runtime(user_settings_path=user_settings)
     runtime.set_api_key("AIzaSyFAKEKEY")
 
-    runtime.update_caption_layout(chars_per_line=12, max_lines=4)
+    runtime.update_caption_layout(chars_per_line=12, max_lines=4, sentence_breaks=True)
 
     assert "AIzaSyFAKEKEY" not in user_settings.read_text(encoding="utf-8")
     assert "api_key" not in user_settings.read_text(encoding="utf-8")
@@ -474,7 +474,7 @@ def test_a_failing_write_does_not_break_the_setting_change(tmp_path: Any) -> Non
     runtime, _created, _provider = _runtime(user_settings_path=unwritable)
     runtime._persist = _raise_os_error  # type: ignore[assignment]
 
-    runtime.update_caption_layout(chars_per_line=12, max_lines=4)
+    runtime.update_caption_layout(chars_per_line=12, max_lines=4, sentence_breaks=True)
 
     assert runtime.settings["caption"]["chars_per_line"] == 12
 
@@ -544,7 +544,7 @@ def test_caption_layout_can_change_while_running() -> None:
         await _wait_until(lambda: runtime.snapshot().caption.text == "一二三四五六")
 
         before = runtime.snapshot().caption
-        runtime.update_caption_layout(chars_per_line=4, max_lines=2)
+        runtime.update_caption_layout(chars_per_line=4, max_lines=2, sentence_breaks=True)
         after = runtime.snapshot().caption
 
         assert after.lines == ("一二三四", "五六")
@@ -564,7 +564,9 @@ def test_caption_layout_rejects_out_of_range_values() -> None:
 
     for chars, lines in ((0, 2), (999, 2), (20, 0), (20, 99)):
         with pytest.raises(RuntimeSelectionError):
-            runtime.update_caption_layout(chars_per_line=chars, max_lines=lines)
+            runtime.update_caption_layout(
+                chars_per_line=chars, max_lines=lines, sentence_breaks=True
+            )
 
     assert runtime.settings["caption"]["chars_per_line"] == original
 

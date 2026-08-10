@@ -15,6 +15,7 @@ from backend.app.api.models import (
 from backend.app.config import (
     caption_layout,
     caption_max_payload_length,
+    caption_sentence_breaks,
     caption_style,
 )
 from backend.app.services.runtime import (
@@ -37,6 +38,7 @@ def _to_response(settings: Any) -> SettingsResponse:
         caption_max_payload_length=caption_max_payload_length(settings),
         caption_chars_per_line=caption_layout(settings)[0],
         caption_max_lines=caption_layout(settings)[1],
+        caption_sentence_breaks=caption_sentence_breaks(settings),
         caption_style=CaptionStyle(**caption_style(settings)),
         session_rotation_seconds=gemini["session_rotation_seconds"],
     )
@@ -80,7 +82,9 @@ def update_caption_layout(
     """Change the caption layout, allowed while translating."""
     try:
         runtime.update_caption_layout(
-            chars_per_line=payload.chars_per_line, max_lines=payload.max_lines
+            chars_per_line=payload.chars_per_line,
+            max_lines=payload.max_lines,
+            sentence_breaks=payload.sentence_breaks,
         )
     except RuntimeSelectionError as exc:
         raise HTTPException(

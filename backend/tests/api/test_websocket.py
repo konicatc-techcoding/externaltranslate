@@ -110,7 +110,9 @@ def test_appearance_and_layout_changes_are_pushed() -> None:
         after_style = _push_key(runtime.snapshot())
         assert after_style != before
 
-        runtime.update_caption_layout(chars_per_line=8, max_lines=3)
+        runtime.update_caption_layout(
+            chars_per_line=8, max_lines=3, sentence_breaks=True
+        )
         assert _push_key(runtime.snapshot()) != after_style
 
 
