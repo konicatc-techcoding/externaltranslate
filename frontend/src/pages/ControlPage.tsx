@@ -5,6 +5,7 @@ import { connectCaptionSocket, type SocketState } from "../api/websocket";
 import { ApiKeyField } from "../components/ApiKeyField";
 import { AudioMeter } from "../components/AudioMeter";
 import { AudioSourceSelector } from "../components/AudioSourceSelector";
+import { CaptionLayoutSettings } from "../components/CaptionLayoutSettings";
 import { CaptionPreview } from "../components/CaptionPreview";
 import { ComponentStatusList } from "../components/ComponentStatusList";
 import { PrerequisitePanel } from "../components/PrerequisitePanel";
@@ -218,6 +219,16 @@ export function ControlPage() {
         </div>
       </section>
 
+      <CaptionLayoutSettings
+        layout={status.layout}
+        onChange={(charsPerLine, maxLines) => {
+          void api
+            .updateCaptionLayout(charsPerLine, maxLines)
+            .then(() => setError(null))
+            .catch(report);
+        }}
+      />
+
       <AudioMeter meter={status.meter} />
       <ComponentStatusList components={status.components} stale={stale} />
 
@@ -228,7 +239,11 @@ export function ControlPage() {
             {zhTW.caption.overlayLink}
           </a>
         </div>
-        <CaptionPreview caption={status.caption} stale={stale} />
+        <CaptionPreview
+          caption={status.caption}
+          stale={stale}
+          maxLines={status.layout.max_lines}
+        />
       </section>
     </main>
   );

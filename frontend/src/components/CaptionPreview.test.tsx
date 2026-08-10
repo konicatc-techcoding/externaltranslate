@@ -10,6 +10,7 @@ function caption(overrides: Partial<CaptionPayload> = {}): CaptionPayload {
     revision: 1,
     status: "partial",
     text: "你好",
+    lines: ["你好"],
     language_code: "zh-Hant",
     updated_at: 1,
     session_generation: 1,
@@ -24,7 +25,10 @@ describe("CaptionPreview", () => {
   });
 
   it("含 HTML 的字幕顯示為純文字", () => {
-    const payload = caption({ text: "<script>alert(1)</script>" });
+    const payload = caption({
+      text: "<script>alert(1)</script>",
+      lines: ["<script>alert(1)</script>"],
+    });
     const { container } = render(<CaptionPreview caption={payload} />);
 
     expect(screen.getByText("<script>alert(1)</script>")).toBeInTheDocument();
@@ -33,7 +37,7 @@ describe("CaptionPreview", () => {
   });
 
   it("空字幕顯示提示，overlay 模式則不顯示", () => {
-    const empty = caption({ text: "", status: "idle" });
+    const empty = caption({ text: "", status: "idle", lines: [] });
     const { rerender } = render(<CaptionPreview caption={empty} />);
     expect(screen.getByText("尚無字幕")).toBeInTheDocument();
 
@@ -51,7 +55,8 @@ describe("CaptionPreview", () => {
     render(
       <CaptionPreview
         caption={caption()}
-        style={parseOverlayStyle(new URLSearchParams("lines=3&size=40"))}
+        style={parseOverlayStyle(new URLSearchParams("size=40"))}
+        maxLines={3}
       />,
     );
     const viewport = screen.getByTestId("caption-viewport");

@@ -4,6 +4,7 @@ export type OverlayAlign = "left" | "center" | "right";
 
 export interface OverlayStyle {
   width: string;
+  /** Display-height override in lines; the backend layout is the default. */
   lines: number;
   size: number;
   font: string;
@@ -114,11 +115,15 @@ export function hexToRgba(hex: string, opacity: number): string {
 const LINE_HEIGHT = 1.3;
 
 /**
- * The caption box height is exactly `lines`, and the content sticks to the
- * bottom — that is what makes "lines" behave as a sliding window over the
- * accumulating caption instead of a hard character budget.
+ * Size the box to `lineCount` lines. Line breaking itself belongs to the
+ * backend formatter (Stage 3.1); the `lines` query parameter only overrides
+ * how many of those lines this particular overlay shows, so two Browser
+ * Inputs can display different heights of the same caption.
  */
-export function toCssVariables(style: OverlayStyle): CSSProperties {
+export function toCssVariables(
+  style: OverlayStyle,
+  lineCount: number = style.lines,
+): CSSProperties {
   return {
     "--caption-width": style.width,
     "--caption-size": `${style.size}px`,
@@ -127,6 +132,6 @@ export function toCssVariables(style: OverlayStyle): CSSProperties {
     "--caption-bg": hexToRgba(style.bg, style.opacity),
     "--caption-align": style.align,
     "--caption-line-height": `${LINE_HEIGHT}`,
-    "--caption-height": `${(style.size * LINE_HEIGHT * style.lines).toFixed(2)}px`,
+    "--caption-height": `${(style.size * LINE_HEIGHT * Math.max(1, lineCount)).toFixed(2)}px`,
   } as CSSProperties;
 }

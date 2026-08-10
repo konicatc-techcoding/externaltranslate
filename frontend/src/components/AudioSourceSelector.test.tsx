@@ -33,6 +33,8 @@ function settings(overrides: Partial<AppSettings> = {}): AppSettings {
     loopback_endpoint_index: null,
     channel: 1,
     caption_max_payload_length: 4096,
+    caption_chars_per_line: 20,
+    caption_max_lines: 2,
     session_rotation_seconds: 480,
     ...overrides,
   };

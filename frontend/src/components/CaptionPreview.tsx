@@ -1,5 +1,3 @@
-import { useEffect, useRef } from "react";
-
 import { zhTW } from "../i18n/zh-TW";
 import {
   DEFAULT_OVERLAY_STYLE,
@@ -13,41 +11,45 @@ interface CaptionPreviewProps {
   stale?: boolean;
   style?: OverlayStyle;
   showEmptyHint?: boolean;
+  /** Display height in lines; defaults to however many lines arrived. */
+  maxLines?: number;
 }
 
 /**
- * Caption text is rendered as a text node. React escapes it, and nothing here
+ * Caption text is rendered as text nodes. React escapes it, and nothing here
  * ever touches innerHTML, so provider output cannot become markup.
+ *
+ * Line breaking is **not** done here: the backend formatter produces
+ * `caption.lines`, and every consumer renders those same lines so the web
+ * overlay and the vMix GT title cannot wrap differently.
  */
 export function CaptionPreview({
   caption,
   stale = false,
   style = DEFAULT_OVERLAY_STYLE,
   showEmptyHint = true,
+  maxLines,
 }: CaptionPreviewProps) {
-  const boxRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const box = boxRef.current;
-    if (box !== null) {
-      // Stick to the newest line: the box shows the last `lines` of a caption
-      // that keeps growing.
-      box.scrollTop = box.scrollHeight;
-    }
-  }, [caption.text, caption.revision]);
-
-  const hasText = caption.text.length > 0;
+  const lines = caption.lines ?? [];
+  const visible = maxLines === undefined ? lines : lines.slice(-maxLines);
+  const height = Math.max(1, maxLines ?? lines.length ?? 1);
+  const hasText = visible.length > 0;
 
   return (
     <div
       className={`caption-box${stale ? " caption-box--stale" : ""}`}
-      style={toCssVariables(style)}
+      style={toCssVariables(style, height)}
       data-caption-status={caption.status}
       data-stale={stale ? "true" : "false"}
     >
-      <div className="caption-box__viewport" ref={boxRef} data-testid="caption-viewport">
+      <div className="caption-box__viewport" data-testid="caption-viewport">
         {hasText ? (
-          <p className="caption-box__text">{caption.text}</p>
+          visible.map((line, index) => (
+            // Lines have no stable identity; position is the only key there is.
+            <p className="caption-box__text" key={`${index}-${line}`}>
+              {line}
+            </p>
+          ))
         ) : showEmptyHint ? (
           <p className="caption-box__placeholder">{zhTW.caption.empty}</p>
         ) : null}

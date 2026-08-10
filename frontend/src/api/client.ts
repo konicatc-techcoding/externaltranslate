@@ -79,6 +79,12 @@ export const api = {
       body: JSON.stringify(update),
     }),
 
+  updateCaptionLayout: (chars_per_line: number, max_lines: number) =>
+    request<AppSettings>("/api/settings/caption-layout", {
+      method: "PUT",
+      body: JSON.stringify({ chars_per_line, max_lines }),
+    }),
+
   credentialState: () => request<CredentialState>("/api/credentials"),
 
   /**

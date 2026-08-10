@@ -34,6 +34,7 @@ function pushCaption(text: string, status: "partial" | "final" = "partial"): voi
           revision: 1,
           status,
           text,
+          lines: [text],
         },
       }),
     });
@@ -98,6 +99,53 @@ describe("OverlayPage", () => {
     expect(screen.getByText("你好嗎")).toBeInTheDocument();
     const box = screen.getByTestId("caption-viewport").parentElement as HTMLElement;
     expect(box.dataset.stale).toBe("true");
+  });
+
+  it("預設顯示後端排好的行，行數依後端版面", () => {
+    render(<OverlayPage search="" />);
+    act(() => {
+      sockets[0].onmessage?.({
+        data: JSON.stringify({
+          ...IDLE_RUNTIME_STATUS,
+          running: true,
+          layout: { chars_per_line: 4, max_lines: 2 },
+          caption: {
+            ...IDLE_RUNTIME_STATUS.caption,
+            revision: 1,
+            status: "partial",
+            text: "一二三四五六七八",
+            lines: ["一二三四", "五六七八"],
+          },
+        }),
+      });
+    });
+
+    expect(screen.getByText("一二三四")).toBeInTheDocument();
+    expect(screen.getByText("五六七八")).toBeInTheDocument();
+  });
+
+  it("lines 參數只覆寫本頁顯示行數，不改後端排版", () => {
+    render(<OverlayPage search="?lines=1" />);
+    act(() => {
+      sockets[0].onmessage?.({
+        data: JSON.stringify({
+          ...IDLE_RUNTIME_STATUS,
+          running: true,
+          layout: { chars_per_line: 4, max_lines: 3 },
+          caption: {
+            ...IDLE_RUNTIME_STATUS.caption,
+            revision: 1,
+            status: "partial",
+            text: "一二三四五六七八",
+            lines: ["一二三四", "五六七八"],
+          },
+        }),
+      });
+    });
+
+    // only the newest line is shown here; the backend still produced two
+    expect(screen.queryByText("一二三四")).toBeNull();
+    expect(screen.getByText("五六七八")).toBeInTheDocument();
   });
 
   it("空字幕不顯示提示字", () => {

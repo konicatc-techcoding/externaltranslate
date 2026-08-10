@@ -17,9 +17,11 @@ interface OverlayPageProps {
 export function OverlayPage({ search }: OverlayPageProps) {
   const [status, setStatus] = useState<RuntimeStatus>(IDLE_RUNTIME_STATUS);
   const [socketState, setSocketState] = useState<SocketState>("connecting");
-  const style = parseOverlayStyle(
-    new URLSearchParams(search ?? window.location.search),
-  );
+  const params = new URLSearchParams(search ?? window.location.search);
+  const style = parseOverlayStyle(params);
+  // The backend layout decides how many lines exist; `lines` only overrides
+  // how many this overlay shows, so two Browser Inputs can differ.
+  const maxLines = params.has("lines") ? style.lines : status.layout.max_lines;
 
   useEffect(() => {
     document.body.classList.add("overlay-body");
@@ -40,6 +42,7 @@ export function OverlayPage({ search }: OverlayPageProps) {
         caption={status.caption}
         stale={socketState === "stale"}
         style={style}
+        maxLines={maxLines}
         showEmptyHint={false}
       />
     </main>

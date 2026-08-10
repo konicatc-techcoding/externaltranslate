@@ -69,6 +69,12 @@ export const zhTW = {
     },
     stale: "連線中斷，以下為最後已知狀態",
   },
+  captionLayout: {
+    title: "字幕顯示範圍",
+    note: "每行字數以全形字計算；翻譯進行中也可以調整，會立即重新排版。",
+    charsPerLine: "每行字數",
+    maxLines: "行數",
+  },
   caption: {
     title: "字幕預覽",
     empty: "尚無字幕",

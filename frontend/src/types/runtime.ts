@@ -19,6 +19,8 @@ export interface CaptionPayload {
   revision: number;
   status: CaptionStatus;
   text: string;
+  /** Wrapped display window produced by the backend formatter. */
+  lines: string[];
   language_code: string;
   updated_at: number;
   session_generation: number;
@@ -32,8 +34,14 @@ export interface MeterPayload {
   clipping: boolean;
 }
 
+export interface CaptionLayout {
+  chars_per_line: number;
+  max_lines: number;
+}
+
 export interface RuntimeStatus {
   running: boolean;
+  layout: CaptionLayout;
   /** Duration of the current (or last) translation run, in seconds. */
   elapsed_seconds: number;
   status_revision: number;
@@ -78,6 +86,8 @@ export interface AppSettings {
   loopback_endpoint_index: number | null;
   channel: number;
   caption_max_payload_length: number;
+  caption_chars_per_line: number;
+  caption_max_lines: number;
   session_rotation_seconds: number;
 }
 
@@ -92,6 +102,7 @@ export interface CredentialTestResult {
 
 export const IDLE_RUNTIME_STATUS: RuntimeStatus = {
   running: false,
+  layout: { chars_per_line: 20, max_lines: 2 },
   elapsed_seconds: 0,
   status_revision: 0,
   components: [],
@@ -99,6 +110,7 @@ export const IDLE_RUNTIME_STATUS: RuntimeStatus = {
     revision: 0,
     status: "idle",
     text: "",
+    lines: [],
     language_code: "",
     updated_at: 0,
     session_generation: 0,
