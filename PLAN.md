@@ -854,6 +854,10 @@ Stage 0、Stage 1、Stage 1.2 與 Stage 2 已完成並通過驗證與發布：
 收束只會改動 `CaptionState` 語意（text 被清、revision 跳動、GT Title 收到的形狀改變），
 收益小而牽動大。目前仍只有 `finished=true` 與 session 邊界會收束。
 
+**Stage 5 Phase A 已完成（2026-08-10），待實機驗收**：vMix client、節流送出器、
+行→欄位映射、失敗隔離、API routes 與控制頁面板，全部以假 vMix 走真實 HTTP 驗證。
+Phase B（真機 smoke）未執行，因此 Stage 5 **尚未完成**。
+
 ```text
-Stage 4.1（部分）→ 由使用者決定：補完 overlay 樣式／斷句規則／Stage 5 vMix
+Stage 5 Phase A（已完成）→ Phase B 真實 vMix 驗收 → v0.3
 ```

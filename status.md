@@ -10,9 +10,11 @@
 
 ## 0. 下一步（Next Action）
 
-1. **等使用者授權 commit**（句尾換行已實作並實測，尚未 commit）。
-2. **v0.1 驗收剩餘項目**：斷網測試與裝置錯誤測試（見下方 ⏳ 待辦），使用者有空時執行。
-3. 下一個實作階段是 **Stage 5（vMix）**；Stage 3.1／4.1 的功能已全數完成。
+1. **等使用者授權 commit**（Stage 5 Phase A 已完成，尚未 commit）。
+2. **Stage 5 Phase B：真實 vMix 驗收**。使用者需啟動 vMix、開啟 Web Controller、
+   依控制頁顯示的欄位名稱建立 GT Title。計劃檔 §5 有完整步驟。
+   **在 Phase B 通過前，Stage 5 一律標為「待實機驗收」，不得宣稱完成。**
+3. **v0.1 驗收剩餘項目**：斷網測試與裝置錯誤測試（見下方 ⏳ 待辦）。
 4. 使用者回報中英數混排斷行的實際效果後再調整 formatter（目前無已知問題）。
 
 > 已結案的決策（皆為使用者 2026-08-10 拍板，不得自行推翻）：
@@ -127,6 +129,38 @@
   `reset()` 維持 revision 單調）；`caption_sink` 卡在 idle（改用共用的
   `backend/app/status/caption_status.py`）。
 - 控制頁另有翻譯計時器（開始翻譯歸零起算、停止時凍結）。
+
+### Stage 5 Phase A（2026-08-10，vMix 輸出，**待實機驗收**）
+計劃檔：`.hermes/plans/2026-08-10_162520-stage-5-vmix.md`
+
+環境：vMix **28.0.0.42** 已安裝於 `C:\Program Files (x86)
+Mix
+mix.exe`，實作期間未啟動。
+官方 API 事實：port 8088、`GET /api/` 回 XML、`SetText` 參數為
+`Function`／`Input`／`SelectedName`／`Value`、GT Title 文字欄位名稱要加 `.Text` 後綴。
+
+- `backend/app/outputs/`：`base.py`（`CaptionOutput` protocol ＋ `NullOutput`）、
+  `vmix.py`（client：XML 探索、`SetText`、錯誤分類）、`sender.py`（節流送出器）、
+  `vmix_output.py`（行→欄位映射與狀態轉換）。
+- **設定欄位叫 `input_guid` 不叫 `input_key`**：既有的秘密欄位檢查會拒絕任何 `_key` 結尾的
+  欄位。那個檢查是對的，改名字而不是替它開後門。
+- **不加 `httpx` 依賴**：用 stdlib `http.client` ＋ `asyncio.to_thread`。一開始用
+  `urllib.urlopen`，連線被拒時 socket 交給 GC，在 `-W error` 下變成測試失敗；自己持有
+  connection、`finally` 關閉才乾淨。
+- **假 vMix**（`backend/tests/outputs/fake_vmix.py`）以 stdlib `ThreadingHTTPServer` 開真實
+  TCP，可切換逾時／500／404／斷線／壞 XML。驗證了中文、`&`、`%`、`
+
+`、空字串的往返編碼。
+- **節流保證尾筆**：只丟棄過快的更新而不補送最後一筆，字幕會永遠停在倒數第二個片段。
+- **`flush()`** 讓「停止時清空欄位」不必等節流窗口、也不會被關閉流程丟掉。
+- **失敗全隔離**：vMix 沒開／中途掛掉／回 500，翻譯與 overlay 完全不受影響（有測試斷言）。
+  `vmix_output` 元件狀態只發布轉換，不是每個片段一筆。
+- **狀態 detail 只多一個白名單欄位 `field_count`**（數量，不是內容）。
+
+Gates：**542 backend passed**、ruff、mypy 65 files、**118 frontend passed**、build 通過。
+
+**未驗證（Phase B）**：`.Text` 後綴是否如文件所述、單欄位多行的顯示方式、中文在 GT Title
+的字型表現。假伺服器是照文件寫的，只能證明我們送的東西符合文件。
 
 ### 句尾換行（2026-08-10，Stage 3.1 遺留問題結案）
 
