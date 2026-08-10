@@ -817,14 +817,32 @@ Stage 0、Stage 1、Stage 1.2 與 Stage 2 已完成並通過驗證與發布：
   schema。全量 **215 passed**、Ruff/Mypy clean、audit 0（已修 `nanoid` patch advisory），
   已 commit + push（`c618fb4`）。
 
-下一個可執行工作是 **Stage 3.2：Runtime Component Status & Observability**。已在
-`.hermes/plans/2026-08-09_124912-stage-3.2-observability.md` 有細部計劃，新增
-`backend/app/status/`（models／store／publisher），提供 runtime 元件狀態
-（audio_source／gemini_provider／gemini_session／caption_sink）與 sanitized structured log
-（Gemini 連線／session generation／rotation reason／backoff／fail-closed）。由 session
-supervisor 注入 publisher 發布，並以 CLI `--status-events` 顯示，供 Stage 4 UI 消費。
-此 Stage 純 backend observability，不需 API key 或硬體。
+- **Stage 3.2（已發布）**：`backend/app/status/`（models／store／publisher），runtime 元件狀態
+  與 sanitized structured log；CLI `--status-events`／`--caption-state`。
+- **Stage 4 Phase A/B（已發布）**：只綁 `127.0.0.1` 的 FastAPI 控制服務、`PipelineRuntime`、
+  caption WebSocket（含 Origin allowlist）、繁體中文控制頁與 `/overlay`。
+- **Stage 3.1（已發布）**：`backend/app/captions/formatter.py`，以全形寬計算的
+  「每行字數 × 行數」、中文標點禁則、拉丁字詞不硬拆、滑動視窗；控制頁可即時調整。
+- **Stage 4.1（部分完成，已發布）**：字型／字級／文字顏色／向上滑動、一鍵清空字幕、
+  字幕格式預設，以及設定持久化（字幕設定與音訊來源寫回 `config/user.yaml`，音訊裝置
+  以名稱記憶、啟動時比對回編號）。
+
+### 尚未完成
+
+**v0.1 驗收剩餘（使用者手動執行）**：斷網測試與裝置錯誤測試，見 `status.md` 的 ⏳ 待辦。
+這兩項是 v0.1 唯一的 blocker。
+
+**Stage 4.1 剩餘能力**：
+
+- ~~文字粗細、描邊與陰影、背景色／透明度／padding／圓角改為控制頁可調~~（2026-08-10 完成）
+- ~~斷線保留與淡出~~（2026-08-10 完成）
+- Overlay screenshot／Playwright 視覺與尺寸驗證（**唯一剩下的**；目前以真實瀏覽器
+  computed style 驗證取代，尚未自動化）。
+
+**Stage 3.1 遺留的產品決策**：句尾標點是否把累積文字升級為 final（見上方 Stage 3.1
+「句尾標點收束規則」）。目前只有 `finished=true` 與 session 邊界會收束，實測 Gemini Live
+在連續語音下幾乎不送 `finished=true`，因此字幕會持續累積、只靠滑動視窗換頁。
 
 ```text
-Stage 3（已發布）→ Stage 3.2 Observability
+Stage 4.1（部分）→ 由使用者決定：補完 overlay 樣式／斷句規則／Stage 5 vMix
 ```

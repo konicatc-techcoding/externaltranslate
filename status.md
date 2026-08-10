@@ -120,7 +120,35 @@
   `backend/app/status/caption_status.py`）。
 - 控制頁另有翻譯計時器（開始翻譯歸零起算、停止時凍結）。
 
-### Stage 4.1（已實作＋實測通過，本次 commit）
+### Stage 4.1 補完（2026-08-10，字幕外觀）
+使用者決定先補完外觀，理由是它直接決定字幕在 vMix 畫面上的呈現效果。
+
+- **`backend/app/config.py` 的 `CAPTION_STYLE_FIELDS` 是單一真實來源**：每個外觀欄位的
+  名稱、預設值、檢查函式與繁體中文錯誤訊息都在這張表裡。config 驗證、`caption_style()`、
+  `PipelineRuntime.update_caption_style()` 與 preset 驗證全部走這張表——外觀從 5 個欄位長到
+  14 個，逐處手寫檢查正是「API 收得下、runtime 卻忽略」的來源。
+  Pydantic model 刻意**不重複寫 bound**，只宣告型別，由 runtime 驗證後映射成 422。
+- 新增欄位：`weight`、`outline_width`（0–8）、`outline_color`、`shadow`、`background_color`、
+  `background_opacity`（0–1）、`padding`（0–64）、`radius`（0–48）、`align`。
+- **描邊用一圈 `text-shadow`，不用 `-webkit-text-stroke`**：stroke 以字邊為中心、會把中文
+  筆畫變細，正好在需要它更清楚時失效；shadow ring 畫在文字後方不動字形。
+  `textShadowFor()` 在 `frontend/src/overlay/style.ts`。
+- **`outline_width` 預設 0**：升級後自動長出描邊會改變既有 overlay 外觀。
+- `parseOverlayStyle` 拆成 `parseOverlayOverrides()`（只回傳「有給且合法」的 key）＋
+  `captionStyleToOverlay()`。**非法 query 參數退回後端設定**，而不是退回會與控制頁矛盾的硬編預設。
+- **控制頁預覽改用真實樣式**（`captionStyleToOverlay(status.style)`）。先前預覽固定用
+  `DEFAULT_OVERLAY_STYLE`，等於調了看不到，違背「調整時應即時預覽」的規劃。
+- **斷線保留與淡出**：overlay 保留最後字幕並降到 45% 透明度（`.overlay-shell .caption-box--stale`）；
+  控制頁維持虛線外框。空白的 vMix input 看起來像翻譯停了，比一句稍舊的字幕更糟。
+- **舊 preset 檔仍可讀**：`CaptionPreset` 的新欄位都有 default，缺欄位不會讓整組 preset
+  在載入時被當成無效而消失（有測試）。
+
+實測（2026-08-10，真實瀏覽器）：控制頁送出
+`size 56 / bold / outline 4 #101010 / shadow / bg opacity 0 / padding 24 / radius 20 / center`
+→ 頁面 computed style 為 8 圈描邊 + 投影、`font-weight 700`、`text-align center`、
+`padding 24px`、`border-radius 20px`、背景 `rgba(0,0,0,0)`；`config/user.yaml` 同步寫入全部欄位。
+
+### Stage 4.1（已實作＋實測通過，已 commit）
 使用者需求：字型／字級／滑動效果 → 一鍵清空字幕 → 顏色與字幕格式預設 → 重啟還原設定。
 
 - **字幕樣式**：`caption.font`（`jhenghei`／`kai`／`noto-sans-tc` 白名單）、`caption.size`
@@ -165,10 +193,10 @@ font kai / size 64 / color #FFCC00 / scroll false / scroll_ms 400` 七項全部�
 
 | Gate | 結果 |
 |---|---:|
-| `PYTHONPATH='' uv run pytest -W error -q` | **442 passed** |
+| `PYTHONPATH='' uv run pytest -W error -q` | **460 passed** |
 | `uv run ruff check backend` | 通過 |
 | `uv run mypy backend/app` | 59 source files，無問題 |
-| `npm run test` | 15 files / **90 passed** |
+| `npm run test` | 15 files / **103 passed** |
 | `npm run build` | 通過 |
 
 ### ⏳ 待辦：v0.1 驗收剩餘項目（使用者有空時執行）
@@ -180,7 +208,12 @@ font kai / size 64 / color #FFCC00 / scroll false / scroll_ms 400` 七項全部�
       並顯示 attempt／delay，恢復後重新 `connected`；服務不崩潰，錯誤訊息為繁體中文。
 - [ ] **裝置錯誤測試**：翻譯執行中停用或拔除正在使用的音訊裝置。預期：`audio_source`
       轉為 `error`，pipeline 安全停止，UI 顯示可行動的繁體中文訊息，之後仍可重新 Start。
+      **2026-08-10 起這項更需要跑**：音訊裝置持久化改動過選擇路徑，已驗證的只有「啟動時
+      還原」，**「執行中裝置消失」未驗證**。
 - [ ] 兩項結果補進 `docs/reports/v0.1-verification.md` §5（目前標為 C｜未驗證）。
+
+執行方式：開著控制頁看元件狀態，或另開終端機用
+`curl -s http://127.0.0.1:8765/api/pipeline/status` 取狀態快照（不含字幕文字）。
 
 ### 已決議（2026-08-10，字幕版面）
 - **vMix 會同時使用 GT Title 與 Browser Input** → **Stage 3.1 升級為 Stage 5 的硬前置條件**。

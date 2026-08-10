@@ -321,24 +321,50 @@ curl -X PUT http://127.0.0.1:8765/api/settings/caption-layout -H "Content-Type: 
 略有差異。斷行以 code point 為單位，不做 grapheme 分群（2026-08-10 決議），ZWJ 組合表情
 若剛好落在行尾邊界可能被拆開；翻譯輸出以繁體中文為主，實務上不會遇到。
 
-### 字幕樣式（字型／字級／顏色／滑動）
+### 字幕外觀
 
-控制頁的「字幕樣式」面板，同樣**翻譯進行中可調整、立即生效**：
+控制頁的「字幕外觀」面板，全部**翻譯進行中可調整、立即生效**，並會寫回 `config/user.yaml`：
 
-- **字型**：白名單三選一——`jhenghei`（微軟正黑體）、`kai`（標楷體）、
-  `noto-sans-tc`（Noto Sans TC，**Windows 未內建，播放端需另行安裝**，未安裝時瀏覽器
-  會自動 fallback）。字型是白名單而非自由字串：這個值會進到 CSS font stack，
-  且 overlay 網址常被複製到 vMix／OBS，自由字串等於注入點。
-- **字級**：12–200 px。
-- **文字顏色**：嚴格 `#RRGGBB`。
-- **向上滑動效果**：可開關；開啟時新行由下往上推入，滑動時間 120–1000 ms。
+| 設定 | 範圍 | 說明 |
+|---|---|---|
+| 字型 | `jhenghei`／`kai`／`noto-sans-tc` | 白名單三選一（見下） |
+| 字級 | 12–200 px | |
+| 粗體 | 開／關 | |
+| 文字顏色 | `#RRGGBB` | |
+| **描邊粗細** | 0–8 px | 0 為關閉 |
+| **描邊顏色** | `#RRGGBB` | |
+| **文字陰影** | 開／關 | 柔和投影，可與描邊並用 |
+| 背景顏色 | `#RRGGBB` | |
+| 背景透明度 | 0–1 | **0 為完全透明**，字幕框消失只剩文字 |
+| 內距 | 0–64 px | |
+| 圓角 | 0–48 px | |
+| 對齊 | 靠左／置中／靠右 | 預設靠左，見下方說明 |
+| 向上滑動 | 開／關，120–1000 ms | 新行由下往上推入 |
+
+**描邊是字幕疊在影片上的可讀性關鍵**：白字遇到明亮畫面會直接消失，描邊是唯一可靠的解法。
+預設為 0（關閉），因為升級後自動長出描邊會改變既有 overlay 的外觀。
+
+實作上描邊是**繞一圈的 `text-shadow`**，不是 `-webkit-text-stroke`。stroke 以字邊為中心往內外
+各畫一半，會把筆畫本來就密的中文字**變細**——正好在你需要它更清楚的時候。text-shadow 畫在
+文字後方，不會動到字形本身。
+
+**對齊預設靠左**：字幕是一個片段一個片段累加出來的，置中會讓每次更新都重新排版，已經讀過的字
+會左右飄移。
+
+字型是白名單而非自由字串：這個值會進到 CSS font stack，且 overlay 網址常被複製到 vMix／OBS，
+自由字串等於注入點。`noto-sans-tc` **Windows 未內建**，播放端未安裝時瀏覽器會自動 fallback。
 
 ```bash
-curl -X PUT http://127.0.0.1:8765/api/settings/caption-style -H "Content-Type: application/json" -d "{\"font\":\"kai\",\"size\":64,\"scroll\":true,\"scroll_ms\":250,\"color\":\"#FFCC00\"}"
+curl -X PUT http://127.0.0.1:8765/api/settings/caption-style -H "Content-Type: application/json" -d "{\"font\":\"jhenghei\",\"size\":56,\"weight\":\"bold\",\"color\":\"#FFFFFF\",\"outline_width\":4,\"outline_color\":\"#101010\",\"shadow\":true,\"background_color\":\"#000000\",\"background_opacity\":0,\"padding\":24,\"radius\":20,\"align\":\"center\",\"scroll\":true,\"scroll_ms\":250}"
 ```
+
+控制頁的字幕預覽會直接套用這些設定，所以描邊與顏色可以在上線前先看過。
 
 樣式**只影響網頁 overlay**；Stage 5 的 vMix GT Title 有自己的字型與動畫設定，
 共用的只有後端斷好的 `CaptionState.lines`。
+
+**斷線時字幕會保留並淡出**，不會清空——空白的 vMix input 看起來像翻譯停了，那比顯示一句
+稍舊的字幕更糟。控制頁的預覽則改用虛線外框標示，因為那個框同時也是你判斷樣式的依據。
 
 ### 清空字幕
 
@@ -361,6 +387,9 @@ curl -X PUT http://127.0.0.1:8765/api/settings/caption-style -H "Content-Type: a
 存放於 `config/caption-presets.json`（已 gitignore）。所有預設放在**同一個 JSON 檔內、以名稱
 為 key**，名稱不會被當成檔案路徑，因此預設名稱無法用來做路徑穿越。名稱上限 60 字元、
 最多 50 組；檔案損毀或個別項目不合法時只略過壞掉的部分，不會讓控制頁開不起來。
+
+新增外觀設定時，舊的預設檔仍然讀得到——缺少的欄位以預設值補上。否則加一個欄位就會讓你
+之前存的每一組設定安靜地消失。
 
 ### 設定持久化與換電腦
 
@@ -410,6 +439,10 @@ config/caption-presets.json   ← 所有已儲存的字幕預設
 | `bg` | 字幕框背景色，嚴格`#RRGGBB` | `#000000` |
 | `opacity` | 背景透明度0–1，`0`為完全透明 | `0.5` |
 | `align` | `left`／`center`／`right` | `left` |
+| `outline` | 描邊粗細0–8 | `0` |
+| `outlinecolor` | 描邊顏色，嚴格`#RRGGBB` | `#000000` |
+| `padding` | 內距0–64 | `12` |
+| `radius` | 圓角0–48 | `8` |
 
 例如：`http://localhost:5180/overlay?lines=1&width=1600&size=56&opacity=0`
 
