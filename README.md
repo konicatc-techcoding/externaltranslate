@@ -28,8 +28,9 @@ ExternalTranslate 是 Windows 本機優先的即時翻譯字幕應用程式。�
   vMix GT Title 共用同一份`CaptionState.lines`。
 - **Stage 4.1（驗證中）**：字幕外觀與操作——字型（微軟正黑體／標楷體／Noto Sans TC）、
   字級、文字顏色、向上滑動效果（可開關並調整毫秒）、**一鍵清空字幕**、
-  **字幕格式預設的存讀刪**，以及**設定持久化**：控制頁改過的版面與樣式會寫回
-  `config/user.yaml`，重新啟動或換電腦後自動還原。
+  **字幕格式預設的存讀刪**，以及**設定持久化**：控制頁改過的版面、樣式與音訊來源會寫回
+  `config/user.yaml`，重新啟動或換電腦後自動還原。音訊裝置以名稱記憶並於啟動時比對回編號，
+  找不到或同名多個時維持未選擇並說明原因。
 - **Stage 3.2**：`backend/app/status/`（models／store／publisher）提供runtime元件
   狀態與sanitized structured log，session supervisor在連線、rotation、backoff與fail-closed
   時發布狀態；CLI新增`--status-events`與`--caption-state`。真實Gemini smoke尚未完成前，
@@ -363,8 +364,8 @@ curl -X PUT http://127.0.0.1:8765/api/settings/caption-style -H "Content-Type: a
 
 ### 設定持久化與換電腦
 
-控制頁改過的**字幕版面與樣式**會寫回 `config/user.yaml`，重新啟動後端後自動還原，
-不必每次重設。換到另一台電腦時複製這兩個檔案即可：
+控制頁改過的**字幕版面與樣式**以及**音訊來源**會寫回 `config/user.yaml`，重新啟動後端後
+自動還原，不必每次重設。換到另一台電腦時複製這兩個檔案即可：
 
 ```text
 config/user.yaml              ← 目前生效的字幕版面與樣式
@@ -378,8 +379,22 @@ config/caption-presets.json   ← 所有已儲存的字幕預設
 - **寫檔失敗不影響操作**：磁碟唯讀或路徑不存在時設定照常生效，只是沒存下來；
   持久化是便利功能，不該讓直播中的調整失敗。
 
-**音訊裝置選擇不會被持久化**：裝置編號在不同電腦代表不同硬體，同一台重新插拔也可能改變，
-沿用舊編號會錄到錯的來源。每次啟動仍需選擇音訊來源。
+**音訊裝置以名稱記憶，不記編號**。裝置編號只是列舉清單裡的位置，插拔、重開機或換電腦後
+同一個編號可能是完全不同的硬體，直接沿用會安靜地錄到錯的來源。所以存進 `user.yaml` 的是
+`device_name` 與 `device_host_api`（系統音源則是 `loopback_endpoint_name`），編號在**每次啟動時
+用名稱比對回來**：
+
+| 情況 | 結果 |
+|---|---|
+| 重啟軟體、插拔其他裝置、重開機 | 找回同一個裝置 |
+| 上次的裝置不在了 | **不猜**，維持未選擇並在控制頁說明原因 |
+| 有多個同名裝置（兩支相同型號的麥克風） | **不猜**，維持未選擇並請你重新選擇 |
+| 裝置列舉失敗（驅動異常） | 服務照常啟動，維持未選擇並說明原因 |
+
+同名裝置若分屬不同 host API（Windows 常把同一支麥克風同時列在 MME／DirectSound／WASAPI 下），
+會用 host API 區分；若驅動重裝導致 host API 改變而名稱仍唯一，則以名稱為準。
+
+系統音源若使用「Windows 預設輸出」（不指定 endpoint），本來就與機器無關，不需要比對。
 
 ### Overlay 顯示參數
 

@@ -10,12 +10,12 @@
 
 ## 0. 下一步（Next Action）
 
-1. **等使用者授權 push**（Stage 4.1 已 commit，尚未 push）。
-2. **等使用者決定：音訊裝置選擇要不要持久化**。目前刻意不存（裝置編號跨機器／重新插拔
-   都可能代表不同硬體）。已提出的兩個折衷方案：只記「來源類型＋聲道」不記編號；
-   或記「裝置名稱」啟動時比對找回編號，找不到就退回未選擇。**未經使用者拍板不得自行實作。**
-3. **v0.1 驗收剩餘項目**：斷網測試與裝置錯誤測試（見下方 ⏳ 待辦），使用者有空時執行。
-4. 使用者回報中英數混排斷行的實際效果後再調整 formatter（目前無已知問題）。
+1. **等使用者授權 commit + push**（音訊裝置持久化已實作並實測，尚未 commit）。
+2. **v0.1 驗收剩餘項目**：斷網測試與裝置錯誤測試（見下方 ⏳ 待辦），使用者有空時執行。
+3. 使用者回報中英數混排斷行的實際效果後再調整 formatter（目前無已知問題）。
+
+> 已結案的決策：音訊裝置持久化採「記名稱、啟動時比對回編號」（使用者 2026-08-10 拍板），
+> 見下方 Stage 4.1 音訊裝置持久化。**編號永遠不寫入設定檔。**
 
 ---
 
@@ -25,7 +25,7 @@
 |---|---|
 | 專案根目錄 | `C:\Users\razer\Documents\HermesWorkspace\ExternalTranslate` |
 | Branch / remote | `main` → `origin/main` (`github.com/konicatc-techcoding/externaltranslate.git`) |
-| 已發布 HEAD | `fb7fdd1`（`docs: document the caption layout and clear the v0.1 limitation`，Stage 3.1 收尾）；Stage 4.1 已 commit 但**尚未 push** |
+| 已發布 HEAD | `797ef17`（Stage 4.1 字幕樣式／預設／持久化，3 個 commit 已 push）；音訊裝置持久化**尚未 commit** |
 | Python | 3.11，套件管理 `uv`；Windows Git Bash |
 | 關鍵執行規則 | 所有 Python／uv 指令必須 `PYTHONPATH=''`；證實 backend 需 canonical `uv run pytest -W error` |
 
@@ -140,17 +140,35 @@
   1. 寫檔前跑既有 secret 欄位檢查，**API key 絕不落地**（有測試斷言檔內不含 key 也不含 `api_key`）。
   2. `user.yaml` 解析失敗時**拒絕覆寫**，不銷毀使用者可能還想修好的設定。
   3. 寫檔失敗（唯讀／路徑不存在）**不影響設定變更本身**，持久化不該讓直播中的調整失敗。
-- **音訊裝置選擇刻意不持久化**（有測試明確斷言），理由見 §0 第 2 點。
+#### 音訊裝置持久化（2026-08-10 使用者拍板：記名稱比對）
+- `backend/app/audio/identity.py`：`resolve_device_index()`／`resolve_endpoint_index()`
+  以**名稱（＋host API）**找回目前的列舉編號。**編號永遠不寫入 `user.yaml`**——編號是列舉
+  清單裡的位置，插拔／重開機／換電腦後同一個數字可能是不同硬體，寫進去等於「看起來成功、
+  實際錄錯來源」。
+- 存的是 `audio.device_name`、`audio.device_host_api`、`audio.loopback_endpoint_name`
+  （皆為 strict schema 新欄位，與既有 index 欄位同樣遵守 INPUT_DEVICE XOR WASAPI_LOOPBACK）。
+- **不猜**：找不到、同名多個、或列舉失敗時一律維持未選擇，並由
+  `RuntimeSnapshot.audio_notice` →`/api/pipeline/status` 與 WebSocket → 控制頁黃色提示說明原因。
+  同名但不同 host API（Windows 常把同一支麥克風列在 MME／DirectSound／WASAPI 下）用 host API
+  區分；host API 變了但名稱唯一則以名稱為準。
+- `serve.py` 在建立 runtime 後呼叫 `restore_audio_selection()`；沒有存過名稱時直接 return，
+  不會為了沒東西可還原而去列舉硬體。
+- 系統音源選「Windows 預設輸出」時 `loopback_endpoint_name` 為 null，本來就與機器無關。
+
+實測（2026-08-10，真實硬體）：選 index 9 的 `Microphone (Realtek(R) Audio)`（WASAPI，同名裝置
+另有 MME 與 DirectSound 兩筆）→ `user.yaml` 只寫入名稱與 host API →**重啟後端**→ device_index
+還原為 9、`audio_notice` 為 None。把名稱改成不存在的裝置再重啟 → device_index 為 None、
+`audio_notice` 為「找不到上次使用的音訊裝置「…」，已改為未選擇；請重新選擇音訊來源。」
 
 實測（2026-08-10）：改設定 → 殺掉後端 → 重新啟動 → `chars_per_line 12 / max_lines 4 /
 font kai / size 64 / color #FFCC00 / scroll false / scroll_ms 400` 七項全部還原。
 
 | Gate | 結果 |
 |---|---:|
-| `PYTHONPATH='' uv run pytest -W error -q` | **414 passed** |
+| `PYTHONPATH='' uv run pytest -W error -q` | **442 passed** |
 | `uv run ruff check backend` | 通過 |
-| `uv run mypy backend/app` | 58 source files，無問題 |
-| `npm run test` | 15 files / **89 passed** |
+| `uv run mypy backend/app` | 59 source files，無問題 |
+| `npm run test` | 15 files / **90 passed** |
 | `npm run build` | 通過 |
 
 ### ⏳ 待辦：v0.1 驗收剩餘項目（使用者有空時執行）
