@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import time
 
+import pytest
+from starlette.websockets import WebSocketDisconnect
+
 from backend.app.translation.models import TranslationEvent, TranslationEventKind
 from backend.tests.api.test_pipeline_route import make_client
 
@@ -83,6 +86,33 @@ def test_socket_reports_running_state_transitions() -> None:
             client.post("/api/pipeline/stop")
 
     assert running_seen is True
+
+
+def test_only_loopback_origins_may_connect() -> None:
+    for client in make_client():
+        for origin in ("http://localhost:5173", "http://127.0.0.1:8765"):
+            with client.websocket_connect(
+                "/ws/captions", headers={"origin": origin}
+            ) as socket:
+                assert socket.receive_json()["running"] is False
+
+        for origin in ("https://evil.example", "http://192.168.1.10:5173"):
+            with pytest.raises(WebSocketDisconnect) as caught, client.websocket_connect(
+                "/ws/captions", headers={"origin": origin}
+            ) as socket:
+                socket.receive_json()
+            assert caught.value.code == 1008
+
+
+def test_disconnect_ends_the_server_side_loop() -> None:
+    # An idle socket that is never written to must still notice the client
+    # leaving, otherwise every reconnect leaks a task writing to a dead peer.
+    for client in make_client(ws_poll_interval=0.01):
+        with client.websocket_connect("/ws/captions") as socket:
+            socket.receive_json()
+        # A second connection on the same app proves the first one released.
+        with client.websocket_connect("/ws/captions") as socket:
+            assert socket.receive_json()["running"] is False
 
 
 def test_client_messages_do_not_control_the_pipeline() -> None:
