@@ -18,7 +18,7 @@ from backend.app.audio.sources.wasapi_loopback import (
     LoopbackDeviceError,
 )
 from backend.app.captions.assembler import CaptionAssembler, CaptionEventSink
-from backend.app.captions.models import CaptionState, CaptionStatus
+from backend.app.captions.models import CaptionState
 from backend.app.captions.store import CaptionStore
 from backend.app.config import (
     ConfigurationError,
@@ -29,7 +29,7 @@ from backend.app.services.translation_pipeline import (
     TranslationPipeline,
     TranslationPipelineError,
 )
-from backend.app.status.models import Component, ComponentState, StatusReason
+from backend.app.status.caption_status import publish_caption_status
 from backend.app.status.publisher import StatusPublisher, status_payload
 from backend.app.status.store import StatusStore
 from backend.app.translation.base import TranslationProvider, TranslationProviderError
@@ -149,13 +149,6 @@ def caption_payload(state: CaptionState, *, show_text: bool) -> dict[str, Any]:
     return payload
 
 
-_CAPTION_SINK_STATES: dict[CaptionStatus, tuple[ComponentState, StatusReason]] = {
-    CaptionStatus.PARTIAL: (ComponentState.ACTIVE, StatusReason.PARTIAL),
-    CaptionStatus.FINAL: (ComponentState.ACTIVE, StatusReason.FINAL),
-    CaptionStatus.IDLE: (ComponentState.RESET, StatusReason.RESET),
-}
-
-
 def create_caption_observer(
     settings: Mapping[str, Any],
     *,
@@ -184,14 +177,7 @@ def create_caption_observer(
         if emit is not None:
             emit(caption_payload(state, show_text=show_text))
         if status_publisher is not None:
-            component_state, reason = _CAPTION_SINK_STATES[state.status]
-            status_publisher.publish(
-                Component.CAPTION_SINK,
-                component_state,
-                reason=reason,
-                generation=state.session_generation,
-                text_length=len(state.text),
-            )
+            publish_caption_status(status_publisher, state)
 
     return observe
 

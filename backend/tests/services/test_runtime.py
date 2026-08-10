@@ -15,6 +15,7 @@ from backend.app.services.runtime import (
     RuntimeCredentialError,
 )
 from backend.app.status.models import Component, ComponentState
+from backend.app.translation.base import TranslationProviderError
 from backend.app.translation.models import TranslationEvent, TranslationEventKind
 
 _SETTINGS: dict[str, Any] = {
@@ -207,6 +208,67 @@ def test_restart_builds_a_fresh_source() -> None:
     asyncio.run(scenario())
 
 
+def test_restart_after_captions_still_works() -> None:
+    # The first run leaves caption revisions behind; a second run must not
+    # collide with them. Restarting without any caption traffic would not
+    # exercise this at all.
+    async def scenario() -> None:
+        events = [
+            TranslationEvent(
+                kind=TranslationEventKind.OUTPUT_TRANSCRIPTION,
+                text="你好",
+                language_code="zh-Hant",
+                finished=False,
+            )
+        ]
+        runtime, _created, _provider = _runtime(provider=FakeProvider(events))
+        runtime.set_api_key("secret-api-key-value")
+
+        await runtime.start()
+        await _wait_until(lambda: runtime.snapshot().caption.text.endswith("你好"))
+        await runtime.stop()
+
+        await runtime.start()
+        await _wait_until(lambda: runtime.snapshot().caption.text.endswith("你好"))
+
+        assert runtime.last_error is None
+        assert runtime.running is True
+        await runtime.stop()
+
+    asyncio.run(scenario())
+
+
+def test_caption_sink_status_follows_caption_updates() -> None:
+    # Without this the control page shows 字幕輸出 = idle while captions stream.
+    async def scenario() -> None:
+        events = [
+            TranslationEvent(
+                kind=TranslationEventKind.OUTPUT_TRANSCRIPTION,
+                text="你好",
+                language_code="zh-Hant",
+                finished=False,
+            )
+        ]
+        runtime, _created, _provider = _runtime(provider=FakeProvider(events))
+        runtime.set_api_key("secret-api-key-value")
+
+        await runtime.start()
+        await _wait_until(lambda: runtime.snapshot().caption.revision > 1)
+
+        sink = runtime.snapshot().status.by_component(Component.CAPTION_SINK)
+        assert sink is not None
+        assert sink.state is ComponentState.ACTIVE
+        assert sink.detail is not None
+        assert "reason=partial" in sink.detail
+        assert "text_length=2" in sink.detail
+        # metadata only: the caption itself never reaches a status payload
+        assert "你好" not in sink.detail
+
+        await runtime.stop()
+
+    asyncio.run(scenario())
+
+
 def test_snapshot_exposes_status_caption_and_meter() -> None:
     async def scenario() -> None:
         events = [
@@ -232,6 +294,54 @@ def test_snapshot_exposes_status_caption_and_meter() -> None:
         assert audio_status.state is ComponentState.RUNNING
 
         await runtime.stop()
+
+    asyncio.run(scenario())
+
+
+def test_elapsed_time_runs_freezes_and_restarts_from_zero() -> None:
+    async def scenario() -> None:
+        runtime, _created, _provider = _runtime()
+        runtime.set_api_key("secret-api-key-value")
+
+        assert runtime.snapshot().elapsed_seconds == 0.0
+
+        await runtime.start()
+        await asyncio.sleep(0.05)
+        while_running = runtime.snapshot().elapsed_seconds
+        assert while_running > 0
+
+        await runtime.stop()
+        frozen = runtime.snapshot().elapsed_seconds
+        assert frozen >= while_running
+        await asyncio.sleep(0.05)
+        # a stopped run keeps its final duration on screen
+        assert runtime.snapshot().elapsed_seconds == frozen
+
+        await runtime.start()
+        assert runtime.snapshot().elapsed_seconds < frozen
+        await runtime.stop()
+
+    asyncio.run(scenario())
+
+
+def test_elapsed_time_freezes_when_a_run_fails_on_its_own() -> None:
+    async def scenario() -> None:
+        class RejectingProvider:
+            @asynccontextmanager
+            async def connect(self) -> AsyncIterator[object]:
+                raise TranslationProviderError("API權限不足", retryable=False)
+                yield object()
+
+        runtime, _created, _provider = _runtime()
+        runtime._provider_factory = lambda **_kwargs: RejectingProvider()  # type: ignore[attr-defined]
+        runtime.set_api_key("secret-api-key-value")
+
+        await runtime.start()
+        await _wait_until(lambda: runtime.running is False, timeout=2.0)
+
+        frozen = runtime.snapshot().elapsed_seconds
+        await asyncio.sleep(0.05)
+        assert runtime.snapshot().elapsed_seconds == frozen
 
     asyncio.run(scenario())
 
@@ -305,6 +415,31 @@ def test_audio_selection_cannot_change_while_running() -> None:
             )
 
         await runtime.stop()
+
+    asyncio.run(scenario())
+
+
+def test_permanent_credential_failure_stays_visible_as_fail_closed() -> None:
+    async def scenario() -> None:
+        class RejectingProvider:
+            @asynccontextmanager
+            async def connect(self) -> AsyncIterator[object]:
+                raise TranslationProviderError("API權限不足", retryable=False)
+                yield object()
+
+        runtime, _created, _provider = _runtime()
+        runtime._provider_factory = lambda **_kwargs: RejectingProvider()  # type: ignore[attr-defined]
+        runtime.set_api_key("secret-api-key-value")
+
+        await runtime.start()
+        await _wait_until(lambda: runtime.running is False, timeout=2.0)
+
+        provider_status = runtime.snapshot().status.by_component(
+            Component.GEMINI_PROVIDER
+        )
+        assert provider_status is not None
+        # A generic error here would hide an unrecoverable credential problem.
+        assert provider_status.state is ComponentState.FAIL_CLOSED
 
     asyncio.run(scenario())
 

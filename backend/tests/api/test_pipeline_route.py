@@ -177,6 +177,26 @@ def test_settings_cannot_change_while_running(client: TestClient) -> None:
     client.post("/api/pipeline/stop")
 
 
+def test_start_reports_why_the_audio_source_could_not_be_built() -> None:
+    from backend.app.audio.devices import AudioDeviceError
+
+    def failing_factory(_settings: Any) -> FakeSource:
+        raise AudioDeviceError("尚未選擇 audio.device_index，無法啟動輸入裝置。")
+
+    runtime = PipelineRuntime(
+        _SETTINGS,
+        source_factory=failing_factory,
+        provider_factory=lambda **_kwargs: FakeProvider(),
+    )
+    with TestClient(create_app(runtime=runtime)) as client:
+        client.put("/api/credentials", json={"api_key": _KEY})
+        response = client.post("/api/pipeline/start")
+
+    # A generic 503 would leave the user with nothing to act on.
+    assert response.status_code == 422
+    assert "device_index" in response.json()["detail"]
+
+
 def test_restart_leaves_no_source_behind() -> None:
     sources: list[FakeSource] = []
     for client in make_client(sources=sources):

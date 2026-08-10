@@ -1,20 +1,28 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import Callable, Mapping
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any, Literal
 
 from backend.app.audio.capture import create_audio_source_from_settings
+from backend.app.audio.devices import AudioDeviceError
 from backend.app.audio.models import MeterReading
 from backend.app.audio.sources.base import AudioSource
+from backend.app.audio.sources.input_device import AudioCaptureError
+from backend.app.audio.sources.wasapi_loopback import (
+    LoopbackCaptureError,
+    LoopbackDeviceError,
+)
 from backend.app.captions.assembler import CaptionAssembler, CaptionEventSink
 from backend.app.captions.models import CaptionState
 from backend.app.captions.store import CaptionStore
 from backend.app.config import caption_max_payload_length
 from backend.app.services.translation_pipeline import TranslationPipeline
-from backend.app.status.models import Component, ComponentState, RuntimeStatusSnapshot, StatusReason
+from backend.app.status.caption_status import publish_caption_status
+from backend.app.status.models import RuntimeStatusSnapshot
 from backend.app.status.publisher import StatusPublisher
 from backend.app.status.store import StatusStore
 from backend.app.translation.base import TranslationProvider, TranslationProviderError
@@ -24,6 +32,13 @@ from backend.app.translation.models import TranslationEvent
 _SOURCE_KINDS = ("input_device", "wasapi_loopback")
 
 CredentialTestOutcome = Literal["ok", "auth_failed", "network_error", "not_configured"]
+
+_AUDIO_SELECTION_ERRORS = (
+    AudioDeviceError,
+    AudioCaptureError,
+    LoopbackDeviceError,
+    LoopbackCaptureError,
+)
 
 
 class RuntimeServiceError(RuntimeError):
@@ -51,6 +66,7 @@ class RuntimeSnapshot:
     caption: CaptionState
     meter: MeterReading | None
     last_error: str | None
+    elapsed_seconds: float
 
 
 SourceFactory = Callable[[Mapping[str, Any]], AudioSource]
@@ -83,10 +99,23 @@ class PipelineRuntime:
         self._status_store = StatusStore()
         self._status_publisher = StatusPublisher(self._status_store)
         self._caption_store = CaptionStore()
+        # One assembler for the runtime's life: a per-run assembler would
+        # restart revisions at zero and the store, which outlives the run,
+        # rejects that as a regression.
+        self._caption_assembler = CaptionAssembler(
+            max_payload_length=caption_max_payload_length(self._settings)
+        )
+        self._caption_sink = CaptionEventSink(
+            self._caption_assembler, self._caption_store
+        )
         self._source: AudioSource | None = None
         self._task: asyncio.Task[None] | None = None
         self._stop_event: asyncio.Event | None = None
         self._last_error: str | None = None
+        # Run duration lives here so it survives a page reload and is correct
+        # for a control page opened after the run began.
+        self._run_started_at: float | None = None
+        self._run_elapsed = 0.0
 
     def __repr__(self) -> str:  # pragma: no cover - trivial, but must stay safe
         return f"<PipelineRuntime running={self.running} configured={self.has_api_key}>"
@@ -180,7 +209,13 @@ class PipelineRuntime:
             raise RuntimeCredentialError("尚未設定Gemini API Key，無法開始翻譯。")
 
         gemini = self._settings["gemini"]
-        source = self._source_factory(self._settings)
+        try:
+            source = self._source_factory(self._settings)
+        except _AUDIO_SELECTION_ERRORS as exc:
+            # These carry our own actionable Traditional Chinese messages
+            # (missing device index, endpoint gone). Collapsing them into a
+            # generic failure would leave the user with nothing to act on.
+            raise RuntimeSelectionError(str(exc)) from None
         provider = self._provider_factory(
             api_key=self._api_key,
             model=gemini["model"],
@@ -191,16 +226,27 @@ class PipelineRuntime:
             session_rotation_seconds=gemini["session_rotation_seconds"],
             status_publisher=self._status_publisher,
         )
-        assembler = CaptionAssembler(
-            max_payload_length=caption_max_payload_length(self._settings)
-        )
-        caption_sink = CaptionEventSink(assembler, self._caption_store)
+        # Start from an empty caption so the previous run's text does not look
+        # like output from this one.
+        self._caption_store.commit(self._caption_assembler.reset())
+        caption_sink = self._caption_sink
+        caption_store = self._caption_store
+        publisher = self._status_publisher
 
         async def event_sink(event: TranslationEvent) -> None:
+            before = caption_store.snapshot()
             await caption_sink(event)
+            state = caption_store.snapshot()
+            if state is not before:
+                # Otherwise the control page shows caption_sink idle while
+                # captions are streaming.
+                publish_caption_status(publisher, state)
 
         self._last_error = None
         self._source = source
+        # Each run times itself from zero.
+        self._run_elapsed = 0.0
+        self._run_started_at = time.monotonic()
         self._stop_event = asyncio.Event()
         self._task = asyncio.create_task(
             self._run(
@@ -230,17 +276,17 @@ class PipelineRuntime:
                 event_sink=event_sink,
             )
         except Exception as exc:
-            # The pipeline already maps provider internals to safe messages;
-            # nothing else is allowed to reach the UI.
+            # Record the message only. The pipeline has already published the
+            # precise component state (fail_closed for an unrecoverable
+            # credential problem); publishing a generic error here would
+            # overwrite it and hide why translation stopped.
             self._last_error = str(exc) or "翻譯pipeline失敗；請檢查裝置、網路與API設定。"
-            self._publish_error()
-
-    def _publish_error(self) -> None:
-        self._status_publisher.publish(
-            Component.GEMINI_PROVIDER,
-            ComponentState.ERROR,
-            reason=StatusReason.ERROR,
-        )
+        finally:
+            # Freeze the duration here rather than in stop(): a run that ends
+            # on its own must still report how long it lasted.
+            if self._run_started_at is not None:
+                self._run_elapsed = time.monotonic() - self._run_started_at
+                self._run_started_at = None
 
     async def stop(self) -> None:
         task = self._task
@@ -259,9 +305,17 @@ class PipelineRuntime:
 
     # --------------------------------------------------------------- snapshot
 
+    @property
+    def elapsed_seconds(self) -> float:
+        started_at = self._run_started_at
+        if started_at is None:
+            return self._run_elapsed
+        return time.monotonic() - started_at
+
     def snapshot(self) -> RuntimeSnapshot:
         source = self._source
         return RuntimeSnapshot(
+            elapsed_seconds=self.elapsed_seconds,
             running=self.running,
             status=self._status_store.snapshot(),
             caption=self._caption_store.snapshot(),
