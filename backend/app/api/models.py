@@ -122,6 +122,7 @@ class MeterPayload(StrictModel):
 
 class RuntimeStatusResponse(StrictModel):
     running: bool
+    elapsed_seconds: float
     status_revision: int
     components: list[ComponentStatusItem]
     caption: CaptionPayload

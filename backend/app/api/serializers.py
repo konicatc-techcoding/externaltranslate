@@ -20,6 +20,7 @@ def runtime_status_response(snapshot: RuntimeSnapshot) -> RuntimeStatusResponse:
     meter = snapshot.meter
     return RuntimeStatusResponse(
         running=snapshot.running,
+        elapsed_seconds=snapshot.elapsed_seconds,
         status_revision=snapshot.status.revision,
         components=[
             ComponentStatusItem(

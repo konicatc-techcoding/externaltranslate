@@ -1,17 +1,16 @@
-import { zhTW } from "./i18n/zh-TW";
+import { ControlPage } from "./pages/ControlPage";
+import { OverlayPage } from "./pages/OverlayPage";
 import "./styles.css";
 
-export function App() {
-  return (
-    <main className="app-shell">
-      <section className="status-card" aria-labelledby="product-title">
-        <p className="eyebrow">Stage 0</p>
-        <h1 id="product-title">{zhTW.productName}</h1>
-        <p>{zhTW.productDescription}</p>
-        <output className="status-badge" aria-live="polite">
-          {zhTW.setupStatus.notChecked}
-        </output>
-      </section>
-    </main>
-  );
+interface AppProps {
+  pathname?: string;
+}
+
+/**
+ * Two pages only, split on pathname. A router dependency would buy nothing
+ * for v0.1.
+ */
+export function App({ pathname }: AppProps = {}) {
+  const path = pathname ?? window.location.pathname;
+  return path.replace(/\/+$/, "") === "/overlay" ? <OverlayPage /> : <ControlPage />;
 }

@@ -15,6 +15,11 @@ body {
   margin: 0;
 }
 
+/* The overlay is keyed out by vMix/OBS, so nothing may paint the page. */
+body.overlay-body {
+  background: transparent;
+}
+
 button,
 input,
 select {
@@ -23,40 +28,159 @@ select {
 
 .app-shell {
   display: grid;
-  min-height: 100vh;
-  place-items: center;
+  gap: 1.25rem;
+  width: min(100%, 60rem);
+  margin: 0 auto;
   padding: 2rem;
 }
 
-.status-card {
-  width: min(100%, 36rem);
-  padding: 2rem;
+.app-header h1 {
+  margin-bottom: 0.25rem;
+}
+
+.panel {
+  padding: 1.25rem;
   border: 1px solid #2a3a51;
-  border-radius: 1rem;
+  border-radius: 0.75rem;
   background: #172232;
-  box-shadow: 0 1rem 3rem rgb(0 0 0 / 25%);
 }
 
-.eyebrow {
+.panel__header {
+  display: flex;
+  gap: 1rem;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.panel__note {
+  margin: 0.25rem 0 0.75rem;
+  color: #9db2cd;
+  font-size: 0.9rem;
+}
+
+.panel__warning {
+  color: #ffd479;
+}
+
+.panel__error {
+  padding: 0.75rem 1rem;
+  border: 1px solid #7d2f2f;
+  border-radius: 0.5rem;
+  color: #ffc9c9;
+  background: #3a1c1c;
+}
+
+.field-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  margin-top: 0.5rem;
+}
+
+.prerequisite-list,
+.component-list {
+  display: grid;
+  gap: 0.35rem;
   margin: 0;
-  color: #70b8ff;
-  font-size: 0.85rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  padding: 0;
+  list-style: none;
 }
 
-h1 {
-  margin-bottom: 0.5rem;
-  font-size: clamp(2rem, 6vw, 3.25rem);
+.prerequisite-list li,
+.component-list li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.prerequisite-list li[data-status="missing"] {
+  color: #ffc9c9;
+}
+
+.prerequisite-list li[data-status="not_checked"] {
+  color: #ffd479;
+}
+
+.component-list__detail,
+.prerequisite-list__version {
+  color: #9db2cd;
+  font-size: 0.9rem;
+}
+
+.meter__row {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.meter__clip {
+  color: #ff9d9d;
+  font-weight: 700;
+}
+
+.clock {
+  padding: 0.35rem 0.7rem;
+  border: 1px solid #2a3a51;
+  border-radius: 0.4rem;
+  background: #101722;
+  font-size: 1.35rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+.clock[data-running="true"] {
+  border-color: #2f6f4a;
+  color: #9ff0c2;
 }
 
 .status-badge {
   display: inline-block;
-  margin-top: 1rem;
+  margin-top: 0.5rem;
   padding: 0.55rem 0.8rem;
   border-radius: 999px;
   color: #ffe9a8;
   background: #51431d;
   font-weight: 700;
+}
+
+/* Caption box: height is exactly `lines`, content sticks to the bottom, so
+   the visible window slides over an ever-growing caption. */
+.caption-box {
+  width: var(--caption-width);
+  margin: 0 auto;
+  padding: 0.5rem 0.9rem;
+  border-radius: 0.5rem;
+  background: var(--caption-bg);
+}
+
+.caption-box__viewport {
+  height: var(--caption-height);
+  overflow: hidden;
+}
+
+.caption-box__text,
+.caption-box__placeholder {
+  margin: 0;
+  color: var(--caption-color);
+  font-family: var(--caption-font);
+  font-size: var(--caption-size);
+  line-height: var(--caption-line-height);
+  text-align: var(--caption-align);
+  overflow-wrap: anywhere;
+}
+
+.caption-box__placeholder {
+  opacity: 0.5;
+}
+
+.caption-box--stale {
+  outline: 2px dashed #ffd479;
+}
+
+.overlay-shell {
+  display: grid;
+  align-content: end;
+  min-height: 100vh;
+  padding: 2rem;
 }
