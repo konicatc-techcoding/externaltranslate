@@ -47,6 +47,25 @@ audio:
   raw_queue_capacity: 32
   pcm_queue_capacity: 50
 
+vmix:
+  # vMix Web API. `host` is a bare host or IP — never a URL, because a scheme
+  # or path in a settings file hands over the whole endpoint. vMix may run on
+  # another machine; the API is plain HTTP, so captions then cross the LAN
+  # unencrypted and the control page says so.
+  host: 127.0.0.1
+  port: 8088
+  # The input is remembered by GUID, not by number: numbers shift when inputs
+  # are added or removed, and SetText would then quietly write to another one.
+  input_guid: null
+  input_name: null
+  # One GT Title text field per caption line. This app is the source of the
+  # spec — build the title to match these names.
+  fields:
+    - Line1.Text
+    - Line2.Text
+  min_interval_ms: 200
+  timeout_ms: 1000
+
 features:
   transcript_persistence: false
   lan_access: false

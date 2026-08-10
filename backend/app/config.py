@@ -218,6 +218,30 @@ _CAPTION_KEYS = _CAPTION_LAYOUT_KEYS | set(CAPTION_STYLE_FIELDS_BY_NAME)
 # used for something it is not.
 MAX_DEVICE_NAME_LENGTH = 200
 
+_VMIX_KEYS = {
+    "host",
+    "port",
+    # Named `input_guid`, not `input_key`: the secret-field check rejects
+    # anything ending in `_key`, and that check is worth more than the naming
+    # symmetry with vMix's XML attribute.
+    "input_guid",
+    "input_name",
+    "fields",
+    "min_interval_ms",
+    "timeout_ms",
+}
+# A bare host or IPv4 address. Deliberately not a URL: accepting a scheme or a
+# path would hand the whole endpoint to the settings file.
+_HOSTNAME = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$")
+VMIX_DEFAULT_PORT = 8088
+# Captions update several times a second; below 50 ms the throttle stops being
+# a throttle, above 2 s the caption visibly lags the speech.
+VMIX_MIN_INTERVAL_RANGE = (50, 2000)
+VMIX_TIMEOUT_RANGE = (100, 10_000)
+VMIX_MAX_FIELDS = 10
+MAX_VMIX_FIELD_LENGTH = 120
+DEFAULT_VMIX_FIELDS = ("Line1.Text", "Line2.Text")
+
 
 class ConfigurationError(ValueError):
     """Raised when a settings source is invalid or contains a secret."""
@@ -239,6 +263,7 @@ def load_settings(
     _validate_audio_settings(settings)
     _validate_gemini_settings(settings)
     _validate_caption_settings(settings)
+    validate_vmix_settings(settings)
     return settings
 
 
@@ -499,6 +524,96 @@ def caption_style(settings: Mapping[str, Any]) -> dict[str, Any]:
         # keeps "did this change?" from depending on how it was typed.
         style[field.name] = value.upper() if _is_hex_color(value) else value
     return style
+
+
+def validate_vmix_settings(settings: Settings) -> None:
+    vmix = settings.get("vmix")
+    if vmix is None:
+        return
+    if not isinstance(vmix, Mapping):
+        raise ConfigurationError("vmix 必須是 mapping。")
+
+    unknown_fields = set(vmix) - _VMIX_KEYS
+    if unknown_fields:
+        field = min(str(item) for item in unknown_fields)
+        raise ConfigurationError(f"不支援或尚未接線的設定欄位：vmix.{field}")
+
+    host = vmix.get("host")
+    if not isinstance(host, str) or _HOSTNAME.fullmatch(host) is None:
+        raise ConfigurationError(
+            "vmix.host 必須是主機名稱或 IP，不得包含 scheme、port、路徑或 query。"
+        )
+
+    if not _is_bounded_int(vmix.get("port"), minimum=1, maximum=65535):
+        raise ConfigurationError("vmix.port 必須是 1 到 65535 之間的整數。")
+
+    for name in ("input_guid", "input_name"):
+        value = vmix.get(name)
+        if value is not None and (
+            not isinstance(value, str) or not value.strip() or len(value) > 200
+        ):
+            raise ConfigurationError(f"vmix.{name} 必須是 null 或非空字串。")
+
+    _validate_vmix_fields(vmix.get("fields"))
+
+    if not _is_bounded_int(
+        vmix.get("min_interval_ms"),
+        minimum=VMIX_MIN_INTERVAL_RANGE[0],
+        maximum=VMIX_MIN_INTERVAL_RANGE[1],
+    ):
+        raise ConfigurationError(
+            f"vmix.min_interval_ms 必須是 {VMIX_MIN_INTERVAL_RANGE[0]} 到 "
+            f"{VMIX_MIN_INTERVAL_RANGE[1]} 之間的整數。"
+        )
+
+    if not _is_bounded_int(
+        vmix.get("timeout_ms"),
+        minimum=VMIX_TIMEOUT_RANGE[0],
+        maximum=VMIX_TIMEOUT_RANGE[1],
+    ):
+        raise ConfigurationError(
+            f"vmix.timeout_ms 必須是 {VMIX_TIMEOUT_RANGE[0]} 到 "
+            f"{VMIX_TIMEOUT_RANGE[1]} 之間的整數。"
+        )
+
+
+def _validate_vmix_fields(fields: Any) -> None:
+    if not isinstance(fields, list) or not fields:
+        raise ConfigurationError("vmix.fields 必須是至少一個欄位名稱的清單。")
+    if len(fields) > VMIX_MAX_FIELDS:
+        raise ConfigurationError(
+            f"vmix.fields 最多 {VMIX_MAX_FIELDS} 個欄位。"
+        )
+    for name in fields:
+        if (
+            not isinstance(name, str)
+            or not name.strip()
+            or len(name) > MAX_VMIX_FIELD_LENGTH
+        ):
+            raise ConfigurationError(
+                f"vmix.fields 的每個項目必須是 1 到 {MAX_VMIX_FIELD_LENGTH} 字元的非空字串。"
+            )
+
+
+def vmix_settings(settings: Mapping[str, Any]) -> dict[str, Any]:
+    """Return the validated vMix output settings.
+
+    ``features.vmix_output`` is the one switch that turns the output on. A
+    second `vmix.enabled` flag could disagree with it, and then neither
+    answers "is this on?".
+    """
+    vmix = settings.get("vmix") or {}
+    features = settings.get("features") or {}
+    return {
+        "enabled": bool(features.get("vmix_output", False)),
+        "host": str(vmix.get("host", "127.0.0.1")),
+        "port": int(vmix.get("port", VMIX_DEFAULT_PORT)),
+        "input_guid": vmix.get("input_guid"),
+        "input_name": vmix.get("input_name"),
+        "fields": list(vmix.get("fields", DEFAULT_VMIX_FIELDS)),
+        "min_interval_ms": int(vmix.get("min_interval_ms", 200)),
+        "timeout_ms": int(vmix.get("timeout_ms", 1000)),
+    }
 
 
 def caption_sentence_breaks(settings: Mapping[str, Any]) -> bool:
