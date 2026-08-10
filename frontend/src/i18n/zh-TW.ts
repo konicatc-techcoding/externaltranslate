@@ -102,6 +102,28 @@ export const zhTW = {
     alignCenter: "置中",
     alignRight: "靠右",
   },
+  vmix: {
+    title: "vMix 輸出",
+    note: "把後端斷好行的字幕送進 GT Title 的文字欄位；網頁 overlay 不受影響。",
+    enabled: "啟用 vMix 輸出",
+    host: "vMix 主機",
+    port: "連接埠",
+    refresh: "從 vMix 讀取 input",
+    input: "輸出到哪個 input",
+    noInputs: "尚未讀取到 input；請確認 vMix 已啟動且 Web Controller 已開啟。",
+    fields: "文字欄位名稱（一行一個）",
+    generate: "依目前行數產生欄位名稱",
+    fieldsHint:
+      "在 vMix 的 Title Editor 建立同名的文字欄位；文字欄位要加 .Text 後綴。",
+    mismatch: "目前字幕有 {lines} 行，但只設定了 {fields} 個欄位，只會顯示最後幾行。",
+    test: "送出測試文字",
+    testText: "測試字幕",
+    remoteWarning:
+      "vMix Web API 只有 HTTP、沒有加密。指定非本機位址時，翻譯後的字幕會以明文經過區域網路。",
+    overlayUrl: "Browser Input 網址",
+    copy: "複製",
+    copied: "已複製",
+  },
   presets: {
     title: "字幕格式預設",
     note: "把目前的字數、行數、字型、字級、顏色與滑動設定存成一組，之後可直接套用。",

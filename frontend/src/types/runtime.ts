@@ -88,6 +88,39 @@ export interface RuntimeStatus {
   last_error: string | null;
   /** Why the audio source saved last time could not be restored, if it could not. */
   audio_notice: string | null;
+  /** Why vMix output is not running although it is switched on. */
+  vmix_notice: string | null;
+}
+
+export interface VmixSettings {
+  enabled: boolean;
+  host: string;
+  port: number;
+  input_guid: string | null;
+  input_name: string | null;
+  /** One GT Title text field per caption line. */
+  fields: string[];
+  min_interval_ms: number;
+  timeout_ms: number;
+}
+
+export const DEFAULT_VMIX_SETTINGS: VmixSettings = {
+  enabled: false,
+  host: "127.0.0.1",
+  port: 8088,
+  input_guid: null,
+  input_name: null,
+  fields: ["Line1.Text", "Line2.Text"],
+  min_interval_ms: 200,
+  timeout_ms: 1000,
+};
+
+export interface VmixInputItem {
+  guid: string;
+  number: number;
+  name: string;
+  kind: string;
+  text_fields: string[];
 }
 
 export interface PrerequisiteItem {
@@ -129,6 +162,7 @@ export interface AppSettings {
   caption_max_lines: number;
   caption_sentence_breaks: boolean;
   caption_style: CaptionStyle;
+  vmix: VmixSettings;
   session_rotation_seconds: number;
 }
 
@@ -160,6 +194,7 @@ export const IDLE_RUNTIME_STATUS: RuntimeStatus = {
   meter: null,
   last_error: null,
   audio_notice: null,
+  vmix_notice: null,
 };
 
 export interface CaptionPreset extends CaptionStyle {

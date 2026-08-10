@@ -2,7 +2,11 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "./App";
-import { DEFAULT_CAPTION_STYLE, IDLE_RUNTIME_STATUS } from "./types/runtime";
+import {
+  DEFAULT_CAPTION_STYLE,
+  DEFAULT_VMIX_SETTINGS,
+  IDLE_RUNTIME_STATUS,
+} from "./types/runtime";
 
 class SilentSocket {
   onopen: (() => void) | null = null;
@@ -38,6 +42,7 @@ const RESPONSES: Record<string, unknown> = {
     caption_max_lines: 2,
     caption_sentence_breaks: true,
     caption_style: DEFAULT_CAPTION_STYLE,
+    vmix: DEFAULT_VMIX_SETTINGS,
     session_rotation_seconds: 480,
   },
   "/api/credentials": { configured: false },

@@ -10,6 +10,8 @@ import type {
   PrerequisiteItem,
   RuntimeStatus,
   SourceKind,
+  VmixInputItem,
+  VmixSettings,
 } from "../types/runtime";
 
 export class ApiError extends Error {
@@ -86,6 +88,20 @@ export const api = {
     request<AppSettings>("/api/settings/caption-layout", {
       method: "PUT",
       body: JSON.stringify(layout),
+    }),
+
+  vmixInputs: () => request<{ inputs: VmixInputItem[] }>("/api/vmix/inputs"),
+
+  testVmix: (text: string) =>
+    request<{ message: string }>("/api/vmix/test", {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    }),
+
+  updateVmixSettings: (update: Partial<VmixSettings>) =>
+    request<AppSettings>("/api/settings/vmix", {
+      method: "PUT",
+      body: JSON.stringify(update),
     }),
 
   updateCaptionStyle: (style: CaptionStyle) =>

@@ -3,7 +3,11 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { AudioSourceSelector } from "./AudioSourceSelector";
-import { DEFAULT_CAPTION_STYLE, type AppSettings } from "../types/runtime";
+import {
+  DEFAULT_CAPTION_STYLE,
+  DEFAULT_VMIX_SETTINGS,
+  type AppSettings,
+} from "../types/runtime";
 
 const DEVICES = [
   {
@@ -37,6 +41,7 @@ function settings(overrides: Partial<AppSettings> = {}): AppSettings {
     caption_max_lines: 2,
     caption_sentence_breaks: true,
     caption_style: DEFAULT_CAPTION_STYLE,
+    vmix: DEFAULT_VMIX_SETTINGS,
     session_rotation_seconds: 480,
     ...overrides,
   };

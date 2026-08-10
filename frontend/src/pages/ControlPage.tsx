@@ -12,6 +12,7 @@ import { CaptionStyleSettings } from "../components/CaptionStyleSettings";
 import { ComponentStatusList } from "../components/ComponentStatusList";
 import { PrerequisitePanel } from "../components/PrerequisitePanel";
 import { TranslationClock } from "../components/TranslationClock";
+import { VmixSettings } from "../components/VmixSettings";
 import { zhTW } from "../i18n/zh-TW";
 import { captionStyleToOverlay } from "../overlay/style";
 import {
@@ -23,6 +24,8 @@ import {
   type PrerequisiteItem,
   type RuntimeStatus,
   type SourceKind,
+  type VmixInputItem,
+  type VmixSettings as VmixConfig,
 } from "../types/runtime";
 
 export type UiState =
@@ -63,6 +66,7 @@ export function ControlPage() {
   const [error, setError] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<string | null>(null);
   const [presets, setPresets] = useState<CaptionPreset[]>([]);
+  const [vmixInputs, setVmixInputs] = useState<VmixInputItem[]>([]);
 
   const report = useCallback((caught: unknown) => {
     setError(caught instanceof ApiError ? caught.message : zhTW.errors.generic);
@@ -116,6 +120,15 @@ export function ControlPage() {
       const state = await api.submitCredential(apiKey);
       setConfigured(state.configured);
       setTestResult(null);
+      setError(null);
+    } catch (caught) {
+      report(caught);
+    }
+  };
+
+  const changeVmix = async (update: Partial<VmixConfig>): Promise<void> => {
+    try {
+      setSettings(await api.updateVmixSettings(update));
       setError(null);
     } catch (caught) {
       report(caught);
@@ -273,6 +286,32 @@ export function ControlPage() {
             .catch(report);
         }}
       />
+
+      {settings !== null ? (
+        <VmixSettings
+          settings={settings.vmix}
+          inputs={vmixInputs}
+          maxLines={status.layout.max_lines}
+          overlayUrl={`${window.location.origin}/overlay`}
+          notice={status.vmix_notice}
+          onChange={(update) => void changeVmix(update)}
+          onRefresh={() => {
+            void api
+              .vmixInputs()
+              .then((result) => {
+                setVmixInputs(result.inputs);
+                setError(null);
+              })
+              .catch(report);
+          }}
+          onTest={() => {
+            void api
+              .testVmix(zhTW.vmix.testText)
+              .then(() => setError(null))
+              .catch(report);
+          }}
+        />
+      ) : null}
 
       <AudioMeter meter={status.meter} />
       <ComponentStatusList components={status.components} stale={stale} />
