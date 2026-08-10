@@ -3,22 +3,16 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { CaptionStyleSettings } from "./CaptionStyleSettings";
-import type { CaptionStyle } from "../types/runtime";
+import { DEFAULT_CAPTION_STYLE, type CaptionStyle } from "../types/runtime";
 
-const STYLE: CaptionStyle = {
-  font: "jhenghei",
-  size: 48,
-  scroll: true,
-  scroll_ms: 250,
-  color: "#FFFFFF",
-};
+const STYLE: CaptionStyle = DEFAULT_CAPTION_STYLE;
 
 describe("CaptionStyleSettings", () => {
   it("只列出白名單字型", () => {
     render(<CaptionStyleSettings style={STYLE} onChange={vi.fn()} />);
-    const options = screen
-      .getAllByRole("option")
-      .map((option) => option.textContent);
+    const options = Array.from(
+      screen.getByLabelText("字型").querySelectorAll("option"),
+    ).map((option) => option.textContent);
     expect(options).toEqual([
       "微軟正黑體",
       "標楷體",
@@ -112,5 +106,86 @@ describe("CaptionStyleSettings", () => {
         "只影響網頁 overlay；vMix GT Title 有自己的字型與動畫設定。",
       ),
     ).toBeInTheDocument();
+  });
+});
+
+describe("CaptionStyleSettings 的可讀性設定", () => {
+  it("可以調描邊粗細與顏色", () => {
+    const onChange = vi.fn();
+    render(<CaptionStyleSettings style={STYLE} onChange={onChange} />);
+
+    fireEvent.change(screen.getByLabelText("描邊粗細"), {
+      target: { value: "4" },
+    });
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ outline_width: 4 }),
+    );
+
+    fireEvent.change(screen.getByLabelText("描邊顏色"), {
+      target: { value: "#101010" },
+    });
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ outline_color: "#101010" }),
+    );
+  });
+
+  it("超出範圍的描邊不送出", () => {
+    const onChange = vi.fn();
+    render(<CaptionStyleSettings style={STYLE} onChange={onChange} />);
+
+    fireEvent.change(screen.getByLabelText("描邊粗細"), {
+      target: { value: "99" },
+    });
+
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("背景透明度可以拉到 0，字幕框完全透明", () => {
+    const onChange = vi.fn();
+    render(<CaptionStyleSettings style={STYLE} onChange={onChange} />);
+
+    fireEvent.change(screen.getByLabelText("背景透明度"), {
+      target: { value: "0" },
+    });
+
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ background_opacity: 0 }),
+    );
+  });
+
+  it("粗體、陰影與對齊都可切換", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(<CaptionStyleSettings style={STYLE} onChange={onChange} />);
+
+    await user.click(screen.getByLabelText("粗體"));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ weight: "bold" }),
+    );
+
+    await user.click(screen.getByLabelText("文字陰影"));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ shadow: true }),
+    );
+
+    await user.selectOptions(screen.getByLabelText("對齊"), "center");
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ align: "center" }),
+    );
+  });
+
+  it("內距與圓角可以調整", () => {
+    const onChange = vi.fn();
+    render(<CaptionStyleSettings style={STYLE} onChange={onChange} />);
+
+    fireEvent.change(screen.getByLabelText("內距"), { target: { value: "30" } });
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ padding: 30 }),
+    );
+
+    fireEvent.change(screen.getByLabelText("圓角"), { target: { value: "20" } });
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ radius: 20 }),
+    );
   });
 });

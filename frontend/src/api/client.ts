@@ -1,6 +1,7 @@
 import type {
   AppSettings,
   CaptionPreset,
+  CaptionStyle,
   CredentialState,
   CredentialTestResult,
   DeviceItem,
@@ -86,12 +87,7 @@ export const api = {
       body: JSON.stringify({ chars_per_line, max_lines }),
     }),
 
-  updateCaptionStyle: (style: {
-    font: string;
-    size: number;
-    scroll: boolean;
-    scroll_ms: number;
-  }) =>
+  updateCaptionStyle: (style: CaptionStyle) =>
     request<AppSettings>("/api/settings/caption-style", {
       method: "PUT",
       body: JSON.stringify(style),

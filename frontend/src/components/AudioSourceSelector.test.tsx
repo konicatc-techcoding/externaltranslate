@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { AudioSourceSelector } from "./AudioSourceSelector";
-import type { AppSettings } from "../types/runtime";
+import { DEFAULT_CAPTION_STYLE, type AppSettings } from "../types/runtime";
 
 const DEVICES = [
   {
@@ -35,11 +35,7 @@ function settings(overrides: Partial<AppSettings> = {}): AppSettings {
     caption_max_payload_length: 4096,
     caption_chars_per_line: 20,
     caption_max_lines: 2,
-    caption_font: "jhenghei",
-    caption_size: 48,
-    caption_scroll: true,
-    caption_scroll_ms: 250,
-    caption_color: "#FFFFFF",
+    caption_style: DEFAULT_CAPTION_STYLE,
     session_rotation_seconds: 480,
     ...overrides,
   };

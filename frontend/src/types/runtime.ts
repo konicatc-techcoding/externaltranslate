@@ -42,10 +42,36 @@ export interface CaptionLayout {
 export interface CaptionStyle {
   font: string;
   size: number;
+  weight: string;
+  color: string;
+  outline_width: number;
+  outline_color: string;
+  shadow: boolean;
+  background_color: string;
+  background_opacity: number;
+  padding: number;
+  radius: number;
+  align: string;
   scroll: boolean;
   scroll_ms: number;
-  color: string;
 }
+
+export const DEFAULT_CAPTION_STYLE: CaptionStyle = {
+  font: "jhenghei",
+  size: 48,
+  weight: "normal",
+  color: "#FFFFFF",
+  outline_width: 0,
+  outline_color: "#000000",
+  shadow: false,
+  background_color: "#000000",
+  background_opacity: 0.5,
+  padding: 12,
+  radius: 8,
+  align: "left",
+  scroll: true,
+  scroll_ms: 250,
+};
 
 export interface RuntimeStatus {
   running: boolean;
@@ -99,11 +125,7 @@ export interface AppSettings {
   caption_max_payload_length: number;
   caption_chars_per_line: number;
   caption_max_lines: number;
-  caption_font: string;
-  caption_size: number;
-  caption_scroll: boolean;
-  caption_scroll_ms: number;
-  caption_color: string;
+  caption_style: CaptionStyle;
   session_rotation_seconds: number;
 }
 
@@ -119,13 +141,7 @@ export interface CredentialTestResult {
 export const IDLE_RUNTIME_STATUS: RuntimeStatus = {
   running: false,
   layout: { chars_per_line: 20, max_lines: 2 },
-  style: {
-    font: "jhenghei",
-    size: 48,
-    scroll: true,
-    scroll_ms: 250,
-    color: "#FFFFFF",
-  },
+  style: DEFAULT_CAPTION_STYLE,
   elapsed_seconds: 0,
   status_revision: 0,
   components: [],
@@ -143,13 +159,8 @@ export const IDLE_RUNTIME_STATUS: RuntimeStatus = {
   audio_notice: null,
 };
 
-export interface CaptionPreset {
+export interface CaptionPreset extends CaptionStyle {
   name: string;
   chars_per_line: number;
   max_lines: number;
-  font: string;
-  size: number;
-  color: string;
-  scroll: boolean;
-  scroll_ms: number;
 }

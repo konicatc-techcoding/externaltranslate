@@ -11,9 +11,27 @@ interface CaptionStyleSettingsProps {
 
 export const SIZE_RANGE = [12, 200] as const;
 export const SCROLL_MS_RANGE = [120, 1000] as const;
+export const OUTLINE_RANGE = [0, 8] as const;
+export const PADDING_RANGE = [0, 64] as const;
+export const RADIUS_RANGE = [0, 48] as const;
 
 /** Fonts the playout machine may not have installed. */
 const NEEDS_INSTALL = new Set(["noto-sans-tc"]);
+
+type NumericKey =
+  | "size"
+  | "scroll_ms"
+  | "outline_width"
+  | "padding"
+  | "radius";
+
+const RANGES: Record<NumericKey, readonly [number, number]> = {
+  size: SIZE_RANGE,
+  scroll_ms: SCROLL_MS_RANGE,
+  outline_width: OUTLINE_RANGE,
+  padding: PADDING_RANGE,
+  radius: RADIUS_RANGE,
+};
 
 /**
  * Overlay appearance. Like the layout panel this applies live, and the
@@ -24,29 +42,82 @@ export function CaptionStyleSettings({
   style,
   onChange,
 }: CaptionStyleSettingsProps) {
-  const [size, setSize] = useState(String(style.size));
-  const [scrollMs, setScrollMs] = useState(String(style.scroll_ms));
+  // Numeric fields are edited as text so a half-typed value ("6" on the way to
+  // "64") is not immediately rejected and snapped back.
+  const [drafts, setDrafts] = useState<Record<NumericKey, string>>({
+    size: String(style.size),
+    scroll_ms: String(style.scroll_ms),
+    outline_width: String(style.outline_width),
+    padding: String(style.padding),
+    radius: String(style.radius),
+  });
 
   useEffect(() => {
-    setSize(String(style.size));
-    setScrollMs(String(style.scroll_ms));
-  }, [style.size, style.scroll_ms]);
+    setDrafts({
+      size: String(style.size),
+      scroll_ms: String(style.scroll_ms),
+      outline_width: String(style.outline_width),
+      padding: String(style.padding),
+      radius: String(style.radius),
+    });
+  }, [
+    style.size,
+    style.scroll_ms,
+    style.outline_width,
+    style.padding,
+    style.radius,
+  ]);
 
   const commit = (next: Partial<CaptionStyle>): void => {
     onChange({ ...style, ...next });
   };
 
-  const commitBounded = (
-    raw: string,
-    [min, max]: readonly [number, number],
-    key: "size" | "scroll_ms",
-  ): void => {
+  const editNumber = (key: NumericKey, raw: string): void => {
+    setDrafts((current) => ({ ...current, [key]: raw }));
+    const [min, max] = RANGES[key];
     const value = Number(raw);
     if (!Number.isInteger(value) || value < min || value > max) {
       return;
     }
     commit({ [key]: value } as Partial<CaptionStyle>);
   };
+
+  const numberField = (key: NumericKey, label: string, step = 1) => {
+    const [min, max] = RANGES[key];
+    return (
+      <>
+        <label htmlFor={`caption-${key}`}>{label}</label>
+        <input
+          id={`caption-${key}`}
+          type="number"
+          inputMode="numeric"
+          min={min}
+          max={max}
+          step={step}
+          value={drafts[key]}
+          onChange={(event) => editNumber(key, event.target.value)}
+        />
+      </>
+    );
+  };
+
+  const colorField = (
+    key: "color" | "outline_color" | "background_color",
+    label: string,
+  ) => (
+    <>
+      <label htmlFor={`caption-${key}`}>{label}</label>
+      <input
+        id={`caption-${key}`}
+        type="color"
+        value={style[key]}
+        onChange={(event) =>
+          commit({ [key]: event.target.value.toUpperCase() } as Partial<CaptionStyle>)
+        }
+      />
+      <output>{style[key]}</output>
+    </>
+  );
 
   return (
     <section className="panel" aria-labelledby="caption-style-title">
@@ -67,37 +138,79 @@ export function CaptionStyleSettings({
           ))}
         </select>
 
-        <label htmlFor="caption-size">{zhTW.captionStyle.size}</label>
-        <input
-          id="caption-size"
-          type="number"
-          inputMode="numeric"
-          min={SIZE_RANGE[0]}
-          max={SIZE_RANGE[1]}
-          value={size}
-          onChange={(event) => {
-            setSize(event.target.value);
-            commitBounded(event.target.value, SIZE_RANGE, "size");
-          }}
-        />
+        {numberField("size", zhTW.captionStyle.size)}
+
+        <label>
+          <input
+            type="checkbox"
+            checked={style.weight === "bold"}
+            onChange={(event) =>
+              commit({ weight: event.target.checked ? "bold" : "normal" })
+            }
+          />
+          {zhTW.captionStyle.weight}
+        </label>
       </div>
 
       <div className="field-row">
-        <label htmlFor="caption-color">{zhTW.captionStyle.color}</label>
-        <input
-          id="caption-color"
-          type="color"
-          value={style.color}
-          onChange={(event) =>
-            commit({ color: event.target.value.toUpperCase() })
-          }
-        />
-        <output>{style.color}</output>
+        {colorField("color", zhTW.captionStyle.color)}
+
+        <label htmlFor="caption-align">{zhTW.captionStyle.align}</label>
+        <select
+          id="caption-align"
+          value={style.align}
+          onChange={(event) => commit({ align: event.target.value })}
+        >
+          <option value="left">{zhTW.captionStyle.alignLeft}</option>
+          <option value="center">{zhTW.captionStyle.alignCenter}</option>
+          <option value="right">{zhTW.captionStyle.alignRight}</option>
+        </select>
       </div>
 
       {NEEDS_INSTALL.has(style.font) ? (
         <p className="panel__warning">{zhTW.captionStyle.fontWarning}</p>
       ) : null}
+
+      <div className="field-row">
+        {numberField("outline_width", zhTW.captionStyle.outlineWidth)}
+        {colorField("outline_color", zhTW.captionStyle.outlineColor)}
+
+        <label>
+          <input
+            type="checkbox"
+            checked={style.shadow}
+            onChange={(event) => commit({ shadow: event.target.checked })}
+          />
+          {zhTW.captionStyle.shadow}
+        </label>
+      </div>
+      <p className="panel__note">{zhTW.captionStyle.outlineHint}</p>
+
+      <div className="field-row">
+        {colorField("background_color", zhTW.captionStyle.backgroundColor)}
+
+        <label htmlFor="caption-background-opacity">
+          {zhTW.captionStyle.backgroundOpacity}
+        </label>
+        <input
+          id="caption-background-opacity"
+          type="range"
+          min={0}
+          max={1}
+          step={0.05}
+          value={style.background_opacity}
+          onChange={(event) =>
+            commit({ background_opacity: Number(event.target.value) })
+          }
+        />
+        <output>{style.background_opacity.toFixed(2)}</output>
+      </div>
+      <p className="panel__note">{zhTW.captionStyle.backgroundHint}</p>
+
+      <div className="field-row">
+        {numberField("padding", zhTW.captionStyle.padding)}
+        {numberField("radius", zhTW.captionStyle.radius)}
+      </div>
 
       <div className="field-row">
         <label>
@@ -109,20 +222,17 @@ export function CaptionStyleSettings({
           {zhTW.captionStyle.scroll}
         </label>
 
-        <label htmlFor="scroll-ms">{zhTW.captionStyle.scrollMs}</label>
+        <label htmlFor="caption-scroll_ms">{zhTW.captionStyle.scrollMs}</label>
         <input
-          id="scroll-ms"
+          id="caption-scroll_ms"
           type="number"
           inputMode="numeric"
           min={SCROLL_MS_RANGE[0]}
           max={SCROLL_MS_RANGE[1]}
           step={10}
-          value={scrollMs}
+          value={drafts.scroll_ms}
           disabled={!style.scroll}
-          onChange={(event) => {
-            setScrollMs(event.target.value);
-            commitBounded(event.target.value, SCROLL_MS_RANGE, "scroll_ms");
-          }}
+          onChange={(event) => editNumber("scroll_ms", event.target.value)}
         />
       </div>
     </section>

@@ -2,7 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "./App";
-import { IDLE_RUNTIME_STATUS } from "./types/runtime";
+import { DEFAULT_CAPTION_STYLE, IDLE_RUNTIME_STATUS } from "./types/runtime";
 
 class SilentSocket {
   onopen: (() => void) | null = null;
@@ -36,11 +36,7 @@ const RESPONSES: Record<string, unknown> = {
     caption_max_payload_length: 4096,
     caption_chars_per_line: 20,
     caption_max_lines: 2,
-    caption_font: "jhenghei",
-    caption_size: 48,
-    caption_scroll: true,
-    caption_scroll_ms: 250,
-    caption_color: "#FFFFFF",
+    caption_style: DEFAULT_CAPTION_STYLE,
     session_rotation_seconds: 480,
   },
   "/api/credentials": { configured: false },
@@ -132,6 +128,44 @@ describe("App", () => {
     expect(
       await screen.findByText(/找不到上次使用的音訊裝置/),
     ).toBeInTheDocument();
+  });
+
+  it("控制頁的預覽用真正的字幕樣式，不是預設值", async () => {
+    // Judging an outline or a colour before it goes on air is the whole point
+    // of the preview; rendering defaults would make it lie.
+    const sockets: SilentSocket[] = [];
+    vi.stubGlobal(
+      "WebSocket",
+      class extends SilentSocket {
+        constructor() {
+          super();
+          sockets.push(this);
+        }
+      },
+    );
+
+    render(<App pathname="/" />);
+    await waitFor(() => expect(sockets.length).toBe(1));
+    sockets[0].onmessage?.({
+      data: JSON.stringify({
+        ...IDLE_RUNTIME_STATUS,
+        style: {
+          ...IDLE_RUNTIME_STATUS.style,
+          outline_width: 4,
+          outline_color: "#101010",
+          padding: 30,
+        },
+      }),
+    });
+
+    await waitFor(() => {
+      const box = screen.getByTestId("caption-viewport")
+        .parentElement as HTMLElement;
+      expect(box.style.getPropertyValue("--caption-text-shadow")).toContain(
+        "#101010",
+      );
+      expect(box.style.getPropertyValue("--caption-padding")).toBe("30px");
+    });
   });
 
   it("/overlay 只顯示字幕，沒有任何控制項", () => {

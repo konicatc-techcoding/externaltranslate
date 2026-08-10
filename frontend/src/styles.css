@@ -198,9 +198,12 @@ select {
 .caption-box {
   width: var(--caption-width);
   margin: 0 auto;
-  padding: 0.5rem 0.9rem;
-  border-radius: 0.5rem;
+  padding: var(--caption-padding, 12px);
+  border-radius: var(--caption-radius, 8px);
   background: var(--caption-bg);
+  /* A dropped socket must not blank a live vMix input: the last caption stays
+     on screen and dims, so the operator can see it is no longer current. */
+  transition: opacity 400ms ease-out;
 }
 
 .caption-box__viewport {
@@ -230,8 +233,10 @@ select {
   color: var(--caption-color);
   font-family: var(--caption-font);
   font-size: var(--caption-size);
+  font-weight: var(--caption-weight, normal);
   line-height: var(--caption-line-height);
   text-align: var(--caption-align);
+  text-shadow: var(--caption-text-shadow, none);
   overflow-wrap: anywhere;
 }
 
@@ -239,8 +244,18 @@ select {
   opacity: 0.5;
 }
 
+/* Control page: the dashed outline says "not live" without touching the text,
+   because this preview is also how the operator judges the caption style. */
 .caption-box--stale {
   outline: 2px dashed #ffd479;
+}
+
+/* Overlay: no chrome to show, so the caption itself fades instead. It is kept
+   rather than cleared — a blank vMix input looks like the translation
+   stopped, which is a worse lie than a slightly stale line. */
+.overlay-shell .caption-box--stale {
+  outline: none;
+  opacity: 0.45;
 }
 
 .overlay-shell {

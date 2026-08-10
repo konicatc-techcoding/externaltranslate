@@ -148,6 +148,64 @@ describe("OverlayPage", () => {
     expect(screen.getByText("五六七八")).toBeInTheDocument();
   });
 
+  it("後端的描邊與內距直接套用到 overlay", () => {
+    render(<OverlayPage search="" />);
+    act(() => {
+      sockets[0].onmessage?.({
+        data: JSON.stringify({
+          ...IDLE_RUNTIME_STATUS,
+          running: true,
+          style: {
+            ...IDLE_RUNTIME_STATUS.style,
+            outline_width: 4,
+            outline_color: "#101010",
+            padding: 30,
+            radius: 20,
+            weight: "bold",
+            align: "center",
+          },
+          caption: {
+            ...IDLE_RUNTIME_STATUS.caption,
+            revision: 1,
+            status: "partial",
+            text: "你好",
+            lines: ["你好"],
+          },
+        }),
+      });
+    });
+
+    const box = screen.getByTestId("caption-viewport").parentElement as HTMLElement;
+    expect(box.style.getPropertyValue("--caption-text-shadow")).toContain("#101010");
+    expect(box.style.getPropertyValue("--caption-padding")).toBe("30px");
+    expect(box.style.getPropertyValue("--caption-radius")).toBe("20px");
+    expect(box.style.getPropertyValue("--caption-weight")).toBe("bold");
+    expect(box.style.getPropertyValue("--caption-align")).toBe("center");
+  });
+
+  it("query 參數勝過後端設定，僅限這一頁", () => {
+    render(<OverlayPage search="?outline=0&align=right" />);
+    act(() => {
+      sockets[0].onmessage?.({
+        data: JSON.stringify({
+          ...IDLE_RUNTIME_STATUS,
+          style: { ...IDLE_RUNTIME_STATUS.style, outline_width: 6, align: "center" },
+          caption: {
+            ...IDLE_RUNTIME_STATUS.caption,
+            revision: 1,
+            status: "partial",
+            text: "你好",
+            lines: ["你好"],
+          },
+        }),
+      });
+    });
+
+    const box = screen.getByTestId("caption-viewport").parentElement as HTMLElement;
+    expect(box.style.getPropertyValue("--caption-text-shadow")).toBe("none");
+    expect(box.style.getPropertyValue("--caption-align")).toBe("right");
+  });
+
   it("空字幕不顯示提示字", () => {
     render(<OverlayPage search="" />);
     expect(screen.queryByText("尚無字幕")).toBeNull();

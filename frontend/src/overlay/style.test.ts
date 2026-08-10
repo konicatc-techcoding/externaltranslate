@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  captionStyleToOverlay,
   DEFAULT_OVERLAY_STYLE,
   FONT_STACKS,
   hexToRgba,
+  parseOverlayOverrides,
   parseOverlayStyle,
+  textShadowFor,
   toCssVariables,
 } from "./style";
+import { DEFAULT_CAPTION_STYLE } from "../types/runtime";
 
 function parse(query: string) {
   return parseOverlayStyle(new URLSearchParams(query));
@@ -19,6 +23,7 @@ describe("overlay style parameters", () => {
 
   it("套用合法參數", () => {
     expect(parse("width=1600&lines=3&size=64&font=kai&color=%23FF0000&bg=%23112233&opacity=0.25&align=center")).toEqual({
+      ...DEFAULT_OVERLAY_STYLE,
       width: "1600px",
       lines: 3,
       size: 64,
@@ -64,6 +69,58 @@ describe("overlay style parameters", () => {
   it("opacity 0 代表完全透明", () => {
     expect(parse("opacity=0").opacity).toBe(0);
     expect(hexToRgba("#000000", 0)).toBe("rgba(0, 0, 0, 0)");
+  });
+
+  it("後端樣式是預設值，query 只覆寫這一頁", () => {
+    // The control page is the single source of truth; a URL parameter is a
+    // per-Browser-Input override, so an *invalid* one must fall back to the
+    // backend value rather than to a hard-coded default that contradicts it.
+    const backend = captionStyleToOverlay({
+      ...DEFAULT_CAPTION_STYLE,
+      size: 64,
+      outline_width: 5,
+      align: "center",
+    });
+    const merged = { ...backend, ...parseOverlayOverrides(new URLSearchParams("size=90&outline=nonsense")) };
+
+    expect(merged.size).toBe(90);
+    expect(merged.outlineWidth).toBe(5);
+    expect(merged.align).toBe("center");
+  });
+
+  it("描邊畫在文字後方，不是壓在筆畫上", () => {
+    // `-webkit-text-stroke` is centred on the glyph edge and thins small CJK
+    // characters; a ring of shadows sits behind them instead.
+    const shadow = textShadowFor({
+      ...DEFAULT_OVERLAY_STYLE,
+      outlineWidth: 3,
+      outlineColor: "#101010",
+    });
+
+    expect(shadow).toContain("#101010");
+    expect(shadow.split(",").length).toBe(8);
+    expect(shadow).not.toContain("stroke");
+  });
+
+  it("沒有描邊也沒有陰影時不留下 text-shadow", () => {
+    expect(textShadowFor(DEFAULT_OVERLAY_STYLE)).toBe("none");
+  });
+
+  it("陰影可獨立開啟", () => {
+    expect(textShadowFor({ ...DEFAULT_OVERLAY_STYLE, shadow: true })).toContain("rgba");
+  });
+
+  it("內距與圓角進入 CSS 變數", () => {
+    const variables = toCssVariables({
+      ...DEFAULT_OVERLAY_STYLE,
+      padding: 30,
+      radius: 20,
+      weight: "bold",
+    }) as Record<string, string>;
+
+    expect(variables["--caption-padding"]).toBe("30px");
+    expect(variables["--caption-radius"]).toBe("20px");
+    expect(variables["--caption-weight"]).toBe("bold");
   });
 
   it("行數換算成字幕框高度", () => {

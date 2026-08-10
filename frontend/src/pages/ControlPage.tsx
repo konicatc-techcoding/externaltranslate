@@ -13,6 +13,7 @@ import { ComponentStatusList } from "../components/ComponentStatusList";
 import { PrerequisitePanel } from "../components/PrerequisitePanel";
 import { TranslationClock } from "../components/TranslationClock";
 import { zhTW } from "../i18n/zh-TW";
+import { captionStyleToOverlay } from "../overlay/style";
 import {
   IDLE_RUNTIME_STATUS,
   type AppSettings,
@@ -301,6 +302,9 @@ export function ControlPage() {
         <CaptionPreview
           caption={status.caption}
           stale={stale}
+          // The preview is how the operator judges an outline or a colour
+          // before it goes on air, so it has to render the real style.
+          style={captionStyleToOverlay(status.style)}
           maxLines={status.layout.max_lines}
           scroll={status.style.scroll}
           scrollMs={status.style.scroll_ms}

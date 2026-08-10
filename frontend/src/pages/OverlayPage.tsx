@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 import { connectCaptionSocket, type SocketState } from "../api/websocket";
 import { CaptionPreview } from "../components/CaptionPreview";
-import { FONT_STACKS, parseOverlayStyle } from "../overlay/style";
+import { captionStyleToOverlay, parseOverlayOverrides } from "../overlay/style";
 import { IDLE_RUNTIME_STATUS, type RuntimeStatus } from "../types/runtime";
 
 interface OverlayPageProps {
@@ -18,18 +18,13 @@ export function OverlayPage({ search }: OverlayPageProps) {
   const [status, setStatus] = useState<RuntimeStatus>(IDLE_RUNTIME_STATUS);
   const [socketState, setSocketState] = useState<SocketState>("connecting");
   const params = new URLSearchParams(search ?? window.location.search);
-  const style = parseOverlayStyle(params);
+  // Backend appearance is the single source of truth; a query parameter
+  // overrides it for this overlay only, so two Browser Inputs can differ.
+  const overrides = parseOverlayOverrides(params);
+  const effectiveStyle = { ...captionStyleToOverlay(status.style), ...overrides };
   // The backend layout decides how many lines exist; `lines` only overrides
-  // how many this overlay shows, so two Browser Inputs can differ.
-  const maxLines = params.has("lines") ? style.lines : status.layout.max_lines;
-  // Backend appearance is the default; a query parameter overrides it for
-  // this overlay only.
-  const effectiveStyle = {
-    ...style,
-    font: params.has("font") ? style.font : FONT_STACKS[status.style.font] ?? style.font,
-    size: params.has("size") ? style.size : status.style.size,
-    color: params.has("color") ? style.color : status.style.color,
-  };
+  // how many this overlay shows.
+  const maxLines = overrides.lines ?? status.layout.max_lines;
 
   useEffect(() => {
     document.body.classList.add("overlay-body");

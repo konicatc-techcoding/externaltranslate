@@ -3,9 +3,10 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { CaptionPresets } from "./CaptionPresets";
-import type { CaptionPreset } from "../types/runtime";
+import { DEFAULT_CAPTION_STYLE, type CaptionPreset } from "../types/runtime";
 
 const PRESET: CaptionPreset = {
+  ...DEFAULT_CAPTION_STYLE,
   name: "記者會",
   chars_per_line: 10,
   max_lines: 3,
