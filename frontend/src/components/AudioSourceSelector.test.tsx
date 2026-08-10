@@ -35,6 +35,7 @@ function settings(overrides: Partial<AppSettings> = {}): AppSettings {
     caption_max_payload_length: 4096,
     caption_chars_per_line: 20,
     caption_max_lines: 2,
+    caption_sentence_breaks: true,
     caption_style: DEFAULT_CAPTION_STYLE,
     session_rotation_seconds: 480,
     ...overrides,

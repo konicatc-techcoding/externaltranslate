@@ -10,6 +10,7 @@ const PRESET: CaptionPreset = {
   name: "記者會",
   chars_per_line: 10,
   max_lines: 3,
+  sentence_breaks: true,
   font: "kai",
   size: 72,
   color: "#FFCC00",

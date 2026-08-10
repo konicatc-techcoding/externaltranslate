@@ -1,5 +1,6 @@
 import type {
   AppSettings,
+  CaptionLayout,
   CaptionPreset,
   CaptionStyle,
   CredentialState,
@@ -81,10 +82,10 @@ export const api = {
       body: JSON.stringify(update),
     }),
 
-  updateCaptionLayout: (chars_per_line: number, max_lines: number) =>
+  updateCaptionLayout: (layout: CaptionLayout) =>
     request<AppSettings>("/api/settings/caption-layout", {
       method: "PUT",
-      body: JSON.stringify({ chars_per_line, max_lines }),
+      body: JSON.stringify(layout),
     }),
 
   updateCaptionStyle: (style: CaptionStyle) =>

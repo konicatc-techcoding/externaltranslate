@@ -44,24 +44,32 @@ export function CaptionPreview({
 
   const [sliding, setSliding] = useState(false);
   const previousFirstLine = useRef<string | undefined>(visible[0]);
-  const previousCount = useRef(visible.length);
 
   useEffect(() => {
-    // Only a *new line* animates. The last line grows character by character
-    // as fragments arrive; animating that would make the caption shiver.
-    const lineAppeared =
-      visible.length > previousCount.current ||
-      (visible.length > 0 && visible[0] !== previousFirstLine.current);
-    previousCount.current = visible.length;
-    previousFirstLine.current = visible[0];
+    const first = visible[0];
+    const previous = previousFirstLine.current;
+    previousFirstLine.current = first;
 
-    if (!scroll || stale || !lineAppeared) {
+    // Slide only when the top line was *replaced*, which is the only time
+    // anything actually scrolls past the top edge. Two things change the top
+    // line without scrolling: a closing mark pulled back onto it by the
+    // formatter, and a new line appearing in the empty space below while the
+    // window is not yet full. Text is only ever appended, so an edited line
+    // still starts with what it said before — that prefix is what tells the
+    // two cases apart. Animating them shoves already-read text up and back,
+    // which reads as a shiver rather than a scroll.
+    const scrolledPastTheTop =
+      previous !== undefined &&
+      first !== undefined &&
+      !first.startsWith(previous);
+
+    if (!scroll || stale || !scrolledPastTheTop) {
       return;
     }
     setSliding(true);
     const timer = window.setTimeout(() => setSliding(false), scrollMs);
     return () => window.clearTimeout(timer);
-  }, [visible.length, visible[0], scroll, stale, scrollMs]);
+  }, [visible[0], scroll, stale, scrollMs]);
 
   return (
     <div

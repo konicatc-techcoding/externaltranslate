@@ -5,7 +5,7 @@ import type { CaptionLayout } from "../types/runtime";
 
 interface CaptionLayoutSettingsProps {
   layout: CaptionLayout;
-  onChange: (chars_per_line: number, max_lines: number) => void;
+  onChange: (layout: CaptionLayout) => void;
 }
 
 export const CHARS_PER_LINE_RANGE = [4, 60] as const;
@@ -30,7 +30,11 @@ export function CaptionLayoutSettings({
     setLines(String(layout.max_lines));
   }, [layout.chars_per_line, layout.max_lines]);
 
-  const commit = (nextChars: string, nextLines: string): void => {
+  const commit = (
+    nextChars: string,
+    nextLines: string,
+    sentenceBreaks: boolean = layout.sentence_breaks,
+  ): void => {
     const parsedChars = Number(nextChars);
     const parsedLines = Number(nextLines);
     if (!Number.isInteger(parsedChars) || !Number.isInteger(parsedLines)) {
@@ -44,7 +48,11 @@ export function CaptionLayoutSettings({
     ) {
       return;
     }
-    onChange(parsedChars, parsedLines);
+    onChange({
+      chars_per_line: parsedChars,
+      max_lines: parsedLines,
+      sentence_breaks: sentenceBreaks,
+    });
   };
 
   return (
@@ -79,6 +87,18 @@ export function CaptionLayoutSettings({
           }}
         />
       </div>
+
+      <div className="field-row">
+        <label>
+          <input
+            type="checkbox"
+            checked={layout.sentence_breaks}
+            onChange={(event) => commit(chars, lines, event.target.checked)}
+          />
+          {zhTW.captionLayout.sentenceBreaks}
+        </label>
+      </div>
+      <p className="panel__note">{zhTW.captionLayout.sentenceBreaksHint}</p>
     </section>
   );
 }

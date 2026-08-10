@@ -66,12 +66,83 @@ describe("CaptionPreview", () => {
     );
   });
 
-  it("新的一行進場才滑動", () => {
+  it("視窗滿了、最上面那行被擠掉時才滑動", () => {
     const { rerender } = render(
-      <CaptionPreview caption={caption({ lines: ["第一行"] })} scroll />,
+      <CaptionPreview
+        caption={caption({ lines: ["第一行", "第二行", "第三行"] })}
+        maxLines={3}
+        scroll
+      />,
     );
     rerender(
-      <CaptionPreview caption={caption({ lines: ["第一行", "第二行"] })} scroll />,
+      <CaptionPreview
+        caption={caption({ lines: ["第二行", "第三行", "第四行"] })}
+        maxLines={3}
+        scroll
+      />,
+    );
+    expect(screen.getByTestId("caption-viewport").className).toContain("sliding");
+  });
+
+  it("視窗還沒填滿時多一行不滑動", () => {
+    // Lines stack from the top, so a new line appears in empty space below and
+    // nothing above it moves. Sliding here would shove already-read text up and
+    // back down for no reason — that is the shiver, not the effect.
+    const { rerender } = render(
+      <CaptionPreview
+        caption={caption({ lines: ["第一行"] })}
+        maxLines={3}
+        scroll
+      />,
+    );
+    rerender(
+      <CaptionPreview
+        caption={caption({ lines: ["第一行", "第二行"] })}
+        maxLines={3}
+        scroll
+      />,
+    );
+    expect(screen.getByTestId("caption-viewport").className).not.toContain(
+      "sliding",
+    );
+  });
+
+  it("標點被拉回上一行時不滑動", () => {
+    // The formatter pulls a closing mark back rather than letting it open a
+    // line, so the top line's text grows without anything scrolling.
+    const { rerender } = render(
+      <CaptionPreview
+        caption={caption({ lines: ["我們現在開始", "請看"] })}
+        maxLines={3}
+        scroll
+      />,
+    );
+    rerender(
+      <CaptionPreview
+        caption={caption({ lines: ["我們現在開始。", "請看"] })}
+        maxLines={3}
+        scroll
+      />,
+    );
+    expect(screen.getByTestId("caption-viewport").className).not.toContain(
+      "sliding",
+    );
+  });
+
+  it("只顯示一行時換句仍然滑動", () => {
+    const { rerender } = render(
+      <CaptionPreview
+        caption={caption({ lines: ["前一句"] })}
+        maxLines={1}
+        scroll
+      />,
+    );
+    rerender(
+      <CaptionPreview
+        caption={caption({ lines: ["下一句"] })}
+        maxLines={1}
+        scroll
+      />,
     );
     expect(screen.getByTestId("caption-viewport").className).toContain("sliding");
   });

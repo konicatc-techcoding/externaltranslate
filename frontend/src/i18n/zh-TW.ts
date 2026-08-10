@@ -74,6 +74,9 @@ export const zhTW = {
     note: "每行字數以全形字計算；翻譯進行中也可以調整，會立即重新排版。",
     charsPerLine: "每行字數",
     maxLines: "行數",
+    sentenceBreaks: "句尾換行",
+    sentenceBreaksHint:
+      "句號、驚嘆號或問號結束時，若該行剩下不足 4 個全形字，下一句從新的一行開始。",
   },
   captionStyle: {
     title: "字幕外觀",

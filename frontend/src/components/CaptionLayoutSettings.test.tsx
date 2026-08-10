@@ -8,7 +8,7 @@ describe("CaptionLayoutSettings", () => {
   it("顯示目前生效的每行字數與行數", () => {
     render(
       <CaptionLayoutSettings
-        layout={{ chars_per_line: 20, max_lines: 2 }}
+        layout={{ chars_per_line: 20, max_lines: 2, sentence_breaks: true }}
         onChange={vi.fn()}
       />,
     );
@@ -21,7 +21,7 @@ describe("CaptionLayoutSettings", () => {
     const onChange = vi.fn();
     render(
       <CaptionLayoutSettings
-        layout={{ chars_per_line: 20, max_lines: 2 }}
+        layout={{ chars_per_line: 20, max_lines: 2, sentence_breaks: true }}
         onChange={onChange}
       />,
     );
@@ -30,7 +30,11 @@ describe("CaptionLayoutSettings", () => {
     await user.clear(chars);
     await user.type(chars, "10");
 
-    expect(onChange).toHaveBeenLastCalledWith(10, 2);
+    expect(onChange).toHaveBeenLastCalledWith({
+      chars_per_line: 10,
+      max_lines: 2,
+      sentence_breaks: true,
+    });
   });
 
   it("超出範圍的值不送出，避免打壞現行版面", async () => {
@@ -38,7 +42,7 @@ describe("CaptionLayoutSettings", () => {
     const onChange = vi.fn();
     render(
       <CaptionLayoutSettings
-        layout={{ chars_per_line: 20, max_lines: 2 }}
+        layout={{ chars_per_line: 20, max_lines: 2, sentence_breaks: true }}
         onChange={onChange}
       />,
     );
@@ -53,13 +57,13 @@ describe("CaptionLayoutSettings", () => {
   it("以伺服器回報的值為準", () => {
     const { rerender } = render(
       <CaptionLayoutSettings
-        layout={{ chars_per_line: 20, max_lines: 2 }}
+        layout={{ chars_per_line: 20, max_lines: 2, sentence_breaks: true }}
         onChange={vi.fn()}
       />,
     );
     rerender(
       <CaptionLayoutSettings
-        layout={{ chars_per_line: 6, max_lines: 5 }}
+        layout={{ chars_per_line: 6, max_lines: 5, sentence_breaks: true }}
         onChange={vi.fn()}
       />,
     );
@@ -71,7 +75,7 @@ describe("CaptionLayoutSettings", () => {
   it("說明每行字數以全形字計算並可在翻譯中調整", () => {
     render(
       <CaptionLayoutSettings
-        layout={{ chars_per_line: 20, max_lines: 2 }}
+        layout={{ chars_per_line: 20, max_lines: 2, sentence_breaks: true }}
         onChange={vi.fn()}
       />,
     );
@@ -79,6 +83,39 @@ describe("CaptionLayoutSettings", () => {
       screen.getByText(
         "每行字數以全形字計算；翻譯進行中也可以調整，會立即重新排版。",
       ),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("句尾換行", () => {
+  it("可以關閉，其餘版面設定不變", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(
+      <CaptionLayoutSettings
+        layout={{ chars_per_line: 20, max_lines: 2, sentence_breaks: true }}
+        onChange={onChange}
+      />,
+    );
+
+    await user.click(screen.getByLabelText("句尾換行"));
+
+    expect(onChange).toHaveBeenLastCalledWith({
+      chars_per_line: 20,
+      max_lines: 2,
+      sentence_breaks: false,
+    });
+  });
+
+  it("說明門檻是剩餘空間而不是比例", () => {
+    render(
+      <CaptionLayoutSettings
+        layout={{ chars_per_line: 20, max_lines: 2, sentence_breaks: true }}
+        onChange={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByText(/剩下不足 4 個全形字/),
     ).toBeInTheDocument();
   });
 });

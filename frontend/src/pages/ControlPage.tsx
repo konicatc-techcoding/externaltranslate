@@ -234,9 +234,9 @@ export function ControlPage() {
 
       <CaptionLayoutSettings
         layout={status.layout}
-        onChange={(charsPerLine, maxLines) => {
+        onChange={(next) => {
           void api
-            .updateCaptionLayout(charsPerLine, maxLines)
+            .updateCaptionLayout(next)
             .then(() => setError(null))
             .catch(report);
         }}
