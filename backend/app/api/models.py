@@ -79,6 +79,49 @@ class CaptionStyle(StrictModel):
     scroll_ms: int
 
 
+class VmixSettings(StrictModel):
+    """vMix output settings. `enabled` mirrors `features.vmix_output`."""
+
+    enabled: bool
+    host: str
+    port: int
+    input_guid: str | None
+    input_name: str | None
+    fields: list[str]
+    min_interval_ms: int
+    timeout_ms: int
+
+
+class VmixSettingsUpdate(StrictModel):
+    """Every field optional: the panel changes one thing at a time."""
+
+    enabled: bool | None = None
+    host: str | None = None
+    port: int | None = None
+    input_guid: str | None = None
+    input_name: str | None = None
+    fields: list[str] | None = None
+    min_interval_ms: int | None = None
+    timeout_ms: int | None = None
+
+
+class VmixInputItem(StrictModel):
+    guid: str
+    number: int
+    name: str
+    kind: str
+    #: Names the operator must give the title's text fields.
+    text_fields: list[str]
+
+
+class VmixInputList(StrictModel):
+    inputs: list[VmixInputItem]
+
+
+class VmixTestRequest(StrictModel):
+    text: str = Field(min_length=1, max_length=200)
+
+
 class SettingsResponse(StrictModel):
     source_kind: str
     device_index: int | None
@@ -89,6 +132,7 @@ class SettingsResponse(StrictModel):
     caption_max_lines: int
     caption_sentence_breaks: bool
     caption_style: CaptionStyle
+    vmix: VmixSettings
     session_rotation_seconds: int
 
 
@@ -190,6 +234,9 @@ class RuntimeStatusResponse(StrictModel):
     #: could not. Silently falling back to no selection would read as the
     #: setting having been forgotten.
     audio_notice: str | None = None
+    #: Why vMix output is not running although it was switched on. Separate
+    #: from `last_error`: translation itself is fine.
+    vmix_notice: str | None = None
 
 
 class CaptionPresetItem(CaptionStyle):

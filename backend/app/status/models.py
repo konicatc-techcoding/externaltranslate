@@ -32,6 +32,7 @@ class Component(StrEnum):
     GEMINI_PROVIDER = "gemini_provider"
     GEMINI_SESSION = "gemini_session"
     CAPTION_SINK = "caption_sink"
+    VMIX_OUTPUT = "vmix_output"
 
 
 class ComponentState(StrEnum):
@@ -85,6 +86,16 @@ _ALLOWED_STATES: dict[Component, frozenset[ComponentState]] = {
     | {
         ComponentState.ACTIVE,
         ComponentState.RESET,
+    },
+    # `idle` here means the output is switched off, which is the normal state
+    # for anyone not using vMix — it must not read as a fault.
+    Component.VMIX_OUTPUT: _SHARED_STATES
+    | {
+        ComponentState.CONNECTING,
+        ComponentState.CONNECTED,
+        ComponentState.ACTIVE,
+        ComponentState.BACKOFF,
+        ComponentState.STOPPED,
     },
 }
 

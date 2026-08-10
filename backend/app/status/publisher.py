@@ -29,6 +29,8 @@ _FIELD_ORDER = (
     "delay_seconds",
     "rotation_seconds",
     "text_length",
+    # vMix: how many title fields were written. A count, never the content.
+    "field_count",
 )
 
 
@@ -69,7 +71,7 @@ def _validate_fields(fields: dict[str, Any]) -> dict[str, Any]:
         raise StatusError(f"不支援或可能洩漏內容的 status 欄位：{field}")
     validated: dict[str, Any] = {}
     for name, value in fields.items():
-        if name in ("generation", "attempt", "text_length"):
+        if name in ("generation", "attempt", "text_length", "field_count"):
             validated[name] = _coerce_non_negative_int(name, value)
         elif name == "delay_seconds":
             validated[name] = _coerce_seconds(name, value, positive=False)

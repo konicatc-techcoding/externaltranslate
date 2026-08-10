@@ -20,6 +20,7 @@ from backend.app.api.routes import (
     pipeline,
     presets,
     settings,
+    vmix,
 )
 from backend.app.api.websocket import DEFAULT_POLL_INTERVAL
 from backend.app.api.websocket import router as websocket_router
@@ -106,5 +107,6 @@ def create_app(
     app.include_router(settings.router)
     app.include_router(credentials.router)
     app.include_router(pipeline.router)
+    app.include_router(vmix.router)
     app.include_router(websocket_router)
     return app

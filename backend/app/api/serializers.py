@@ -61,4 +61,5 @@ def runtime_status_response(snapshot: RuntimeSnapshot) -> RuntimeStatusResponse:
         ),
         last_error=snapshot.last_error,
         audio_notice=snapshot.audio_notice,
+        vmix_notice=snapshot.vmix_notice,
     )

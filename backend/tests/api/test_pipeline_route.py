@@ -154,6 +154,9 @@ def test_status_shape_before_and_after_start(client: TestClient) -> None:
         "gemini_provider",
         "gemini_session",
         "caption_sink",
+        # Present and idle even when vMix is off, so the panel can say
+        # "disabled" rather than showing nothing at all.
+        "vmix_output",
     }
 
     client.put("/api/credentials", json={"api_key": _KEY})

@@ -11,12 +11,15 @@ from backend.app.api.models import (
     CaptionStyleUpdate,
     SettingsResponse,
     SettingsUpdate,
+    VmixSettings,
+    VmixSettingsUpdate,
 )
 from backend.app.config import (
     caption_layout,
     caption_max_payload_length,
     caption_sentence_breaks,
     caption_style,
+    vmix_settings,
 )
 from backend.app.services.runtime import (
     PipelineRuntime,
@@ -40,6 +43,7 @@ def _to_response(settings: Any) -> SettingsResponse:
         caption_max_lines=caption_layout(settings)[1],
         caption_sentence_breaks=caption_sentence_breaks(settings),
         caption_style=CaptionStyle(**caption_style(settings)),
+        vmix=VmixSettings(**vmix_settings(settings)),
         session_rotation_seconds=gemini["session_rotation_seconds"],
     )
 
@@ -101,6 +105,30 @@ def update_caption_style(
     """Change overlay appearance, allowed while translating."""
     try:
         runtime.update_caption_style(payload.model_dump())
+    except RuntimeSelectionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
+        ) from None
+    return _to_response(runtime.settings)
+
+
+@router.put("/settings/vmix", response_model=SettingsResponse)
+def update_vmix(
+    payload: VmixSettingsUpdate,
+    runtime: Annotated[PipelineRuntime, Depends(get_runtime)],
+) -> SettingsResponse:
+    """Change the vMix target. Applies on the next start, not mid-run.
+
+    Retargeting a live output would leave the previous title showing whatever
+    was on it, with nothing left to clear it.
+    """
+    changes = payload.model_dump(exclude_none=True)
+    enabled = changes.pop("enabled", None)
+    try:
+        if changes:
+            runtime.update_vmix_settings(changes)
+        if enabled is not None:
+            runtime.set_vmix_enabled(bool(enabled))
     except RuntimeSelectionError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)

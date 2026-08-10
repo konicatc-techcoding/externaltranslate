@@ -37,10 +37,21 @@ from backend.app.config import (
     caption_sentence_breaks,
     caption_style,
     save_user_settings,
+    vmix_settings,
 )
+from backend.app.config import (
+    validate_vmix_settings as _validate_vmix_settings,
+)
+from backend.app.outputs.base import CaptionOutput, NullOutput
+from backend.app.outputs.vmix import VmixClient
+from backend.app.outputs.vmix_output import OutputState, VmixOutput
 from backend.app.services.translation_pipeline import TranslationPipeline
 from backend.app.status.caption_status import publish_caption_status
-from backend.app.status.models import RuntimeStatusSnapshot
+from backend.app.status.models import (
+    Component,
+    ComponentState,
+    RuntimeStatusSnapshot,
+)
 from backend.app.status.publisher import StatusPublisher
 from backend.app.status.store import StatusStore
 from backend.app.translation.base import TranslationProvider, TranslationProviderError
@@ -89,6 +100,7 @@ class RuntimeSnapshot:
     sentence_breaks: bool
     style: dict[str, Any]
     audio_notice: str | None
+    vmix_notice: str | None
 
 
 SourceFactory = Callable[[Mapping[str, Any]], AudioSource]
@@ -96,6 +108,17 @@ ProviderFactory = Callable[..., TranslationProvider]
 PipelineFactory = Callable[..., TranslationPipeline]
 DeviceLister = Callable[[], list[AudioDeviceInfo]]
 LoopbackLister = Callable[[], list[LoopbackEndpointInfo]]
+VmixClientFactory = Callable[..., VmixClient]
+
+# vMix output state maps onto the shared component states the UI already
+# renders; the outputs package stays unaware of the status vocabulary.
+_VMIX_COMPONENT_STATES = {
+    OutputState.CONNECTED: ComponentState.CONNECTED,
+    OutputState.ACTIVE: ComponentState.ACTIVE,
+    OutputState.BACKOFF: ComponentState.BACKOFF,
+    OutputState.ERROR: ComponentState.ERROR,
+    OutputState.STOPPED: ComponentState.STOPPED,
+}
 
 
 def _enumerate_devices() -> list[AudioDeviceInfo]:
@@ -146,6 +169,7 @@ class PipelineRuntime:
         user_settings_path: Path | None = None,
         device_lister: DeviceLister = _enumerate_devices,
         loopback_lister: LoopbackLister = _enumerate_endpoints,
+        vmix_client_factory: VmixClientFactory = VmixClient,
     ) -> None:
         self._settings: dict[str, Any] = deepcopy(dict(settings))
         self._source_factory = source_factory
@@ -155,6 +179,9 @@ class PipelineRuntime:
         self._device_lister = device_lister
         self._loopback_lister = loopback_lister
         self._audio_notice: str | None = None
+        self._vmix_notice: str | None = None
+        self._vmix_client_factory = vmix_client_factory
+        self._vmix_output: CaptionOutput = NullOutput()
         self._preset_store = preset_store or PresetStore(
             Path(__file__).resolve().parents[3] / "config" / "caption-presets.json"
         )
@@ -497,17 +524,130 @@ class PipelineRuntime:
     def _persist(path: Path, payload: dict[str, Any]) -> None:
         save_user_settings(path, payload)
 
-    def clear_captions(self) -> None:
+    async def clear_captions(self) -> None:
         """Wipe the caption for the operator, mid-broadcast.
 
         After a silent stretch the last caption keeps sitting on screen and
         reads as if it were current; clearing it must not require stopping
         translation. The revision advances so every overlay is pushed the
-        empty state.
+        empty state, and the vMix title is blanked too — otherwise "clear"
+        would only clear half the outputs.
         """
         state = self._caption_assembler.reset()
         self._caption_store.commit(state)
         publish_caption_status(self._status_publisher, state)
+        with suppress(Exception):
+            await self._vmix_output.clear()
+
+    # -------------------------------------------------------------- vmix
+
+    @property
+    def vmix_notice(self) -> str | None:
+        """Why vMix output is not running, when it was asked to."""
+        return self._vmix_notice
+
+    def vmix_client(self) -> VmixClient:
+        """A client for the configured host, for listing inputs and testing."""
+        vmix = vmix_settings(self._settings)
+        return self._vmix_client_factory(
+            host=vmix["host"], port=vmix["port"], timeout_ms=vmix["timeout_ms"]
+        )
+
+    def update_vmix_settings(self, updates: Mapping[str, Any]) -> None:
+        """Change the vMix target. Takes effect on the next start."""
+        allowed = {"host", "port", "input_guid", "input_name", "fields",
+                   "min_interval_ms", "timeout_ms"}
+        unknown = set(updates) - allowed
+        if unknown:
+            raise RuntimeSelectionError(f"不支援的 vMix 設定欄位：{min(unknown)}。")
+
+        merged = dict(self._settings.get("vmix") or {})
+        merged.update(updates)
+        candidate = deepcopy(self._settings)
+        candidate["vmix"] = merged
+        try:
+            _validate_vmix_settings(candidate)
+        except ConfigurationError as exc:
+            raise RuntimeSelectionError(str(exc)) from None
+
+        self._settings["vmix"] = merged
+        self._persist_vmix_settings()
+
+    def set_vmix_enabled(self, enabled: bool) -> None:
+        features = dict(self._settings.get("features") or {})
+        features["vmix_output"] = enabled
+        self._settings["features"] = features
+        self._persist_vmix_settings()
+
+    def _persist_vmix_settings(self) -> None:
+        path = self._user_settings_path
+        if path is None:
+            return
+        vmix = vmix_settings(self._settings)
+        payload = {
+            "vmix": {
+                key: vmix[key]
+                for key in (
+                    "host",
+                    "port",
+                    "input_guid",
+                    "input_name",
+                    "fields",
+                    "min_interval_ms",
+                    "timeout_ms",
+                )
+            },
+            "features": {"vmix_output": vmix["enabled"]},
+        }
+        with suppress(ConfigurationError, OSError):
+            self._persist(path, payload)
+
+    async def _open_vmix_output(self) -> CaptionOutput:
+        """Build the vMix output for this run, or fall back to doing nothing.
+
+        Every failure here ends in `NullOutput`. vMix being unreachable or
+        misconfigured must never stop a translation that is otherwise fine —
+        the web overlay is the primary output and it is unaffected.
+        """
+        vmix = vmix_settings(self._settings)
+        self._vmix_notice = None
+        if not vmix["enabled"]:
+            return NullOutput()
+        if not vmix["input_guid"]:
+            self._vmix_notice = "vMix 輸出已啟用，但尚未選擇要輸出的 input。"
+            return NullOutput()
+
+        output = VmixOutput(
+            self.vmix_client(),
+            input_guid=str(vmix["input_guid"]),
+            fields=list(vmix["fields"]),
+            min_interval_ms=int(vmix["min_interval_ms"]),
+            on_state=self._publish_vmix_state,
+        )
+        try:
+            started = await output.start()
+        except Exception:
+            started = False
+        if not started:
+            self._vmix_notice = (
+                output.last_error or "無法啟動 vMix 輸出；翻譯與網頁 overlay 不受影響。"
+            )
+            return NullOutput()
+        return output
+
+    def _publish_vmix_state(self, state: OutputState) -> None:
+        with suppress(Exception):
+            self._status_publisher.publish(
+                Component.VMIX_OUTPUT, _VMIX_COMPONENT_STATES[state]
+            )
+
+    async def _close_vmix_output(self) -> None:
+        output = self._vmix_output
+        self._vmix_output = NullOutput()
+        with suppress(Exception):
+            await output.clear()
+        with suppress(Exception):
+            await output.aclose()
 
     # -------------------------------------------------------------- lifecycle
 
@@ -538,6 +678,8 @@ class PipelineRuntime:
         # Start from an empty caption so the previous run's text does not look
         # like output from this one.
         self._caption_store.commit(self._caption_assembler.reset())
+        self._vmix_output = await self._open_vmix_output()
+        vmix_output = self._vmix_output
         caption_sink = self._caption_sink
         caption_store = self._caption_store
         publisher = self._status_publisher
@@ -547,6 +689,10 @@ class PipelineRuntime:
             await caption_sink(event)
             state = caption_store.snapshot()
             if state is not before:
+                # Never awaited and never allowed to raise: the caption path
+                # must not depend on vMix being reachable.
+                with suppress(Exception):
+                    vmix_output.publish(state.lines)
                 # Otherwise the control page shows caption_sink idle while
                 # captions are streaming.
                 publish_caption_status(publisher, state)
@@ -591,6 +737,9 @@ class PipelineRuntime:
             # overwrite it and hide why translation stopped.
             self._last_error = str(exc) or "翻譯pipeline失敗；請檢查裝置、網路與API設定。"
         finally:
+            # Blank the title before letting go of it, or the last sentence
+            # stays on the vMix output looking like a live caption.
+            await self._close_vmix_output()
             # Freeze the duration here rather than in stop(): a run that ends
             # on its own must still report how long it lasted.
             if self._run_started_at is not None:
@@ -634,4 +783,5 @@ class PipelineRuntime:
             meter=source.latest_meter if source is not None else None,
             last_error=self._last_error,
             audio_notice=self._audio_notice,
+            vmix_notice=self._vmix_notice,
         )

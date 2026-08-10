@@ -12,9 +12,9 @@ router = APIRouter(prefix="/api/captions", tags=["captions"])
 
 
 @router.post("/clear", response_model=MessageResponse)
-def clear_captions(
+async def clear_captions(
     runtime: Annotated[PipelineRuntime, Depends(get_runtime)],
 ) -> MessageResponse:
     """Clear the caption on screen; deliberately allowed while translating."""
-    runtime.clear_captions()
+    await runtime.clear_captions()
     return MessageResponse(message="字幕已清除。")

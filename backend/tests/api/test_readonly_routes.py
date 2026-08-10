@@ -127,6 +127,16 @@ def test_settings_expose_only_non_secret_fields(client: TestClient) -> None:
         "caption_max_lines": 2,
         "caption_sentence_breaks": True,
         "caption_style": DEFAULT_STYLE,
+        "vmix": {
+            "enabled": False,
+            "host": "127.0.0.1",
+            "port": 8088,
+            "input_guid": None,
+            "input_name": None,
+            "fields": ["Line1.Text", "Line2.Text"],
+            "min_interval_ms": 200,
+            "timeout_ms": 1000,
+        },
         "session_rotation_seconds": 480,
     }
     assert "api_key" not in str(body).lower()

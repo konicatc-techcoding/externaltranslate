@@ -501,7 +501,7 @@ def test_clear_captions_empties_the_display_while_running() -> None:
         await _wait_until(lambda: runtime.snapshot().caption.text == "舊的字幕")
 
         before = runtime.snapshot().caption
-        runtime.clear_captions()
+        await runtime.clear_captions()
         after = runtime.snapshot().caption
 
         assert after.text == ""
@@ -521,9 +521,12 @@ def test_clear_captions_empties_the_display_while_running() -> None:
 
 
 def test_clear_captions_before_any_caption_is_harmless() -> None:
-    runtime, _created, _provider = _runtime()
-    runtime.clear_captions()
-    assert runtime.snapshot().caption.text == ""
+    async def scenario() -> None:
+        runtime, _created, _provider = _runtime()
+        await runtime.clear_captions()
+        assert runtime.snapshot().caption.text == ""
+
+    asyncio.run(scenario())
 
 
 def test_caption_layout_can_change_while_running() -> None:
