@@ -23,6 +23,9 @@ ExternalTranslate 是 Windows 本機優先的即時翻譯字幕應用程式。�
 - **Stage 4 Phase A/B（驗證中）**：只綁`127.0.0.1`的FastAPI控制服務、`PipelineRuntime`、
   caption WebSocket，以及繁體中文控制頁與`/overlay`。真實端到端smoke尚未完成前，
   不視為Stage 4／v0.1驗收通過。
+- **Stage 3.1（驗證中）**：後端字幕排版器——以全形寬計算的「每行字數 × 行數」、中文標點
+  禁則、拉丁字詞不硬拆、滑動視窗。控制頁可於翻譯進行中即時調整並重新排版；overlay 與
+  vMix GT Title 共用同一份`CaptionState.lines`。
 - **Stage 3.2**：`backend/app/status/`（models／store／publisher）提供runtime元件
   狀態與sanitized structured log，session supervisor在連線、rotation、backoff與fail-closed
   時發布狀態；CLI新增`--status-events`與`--caption-state`。真實Gemini smoke尚未完成前，
@@ -289,6 +292,31 @@ upgrade階段丟`write ECONNABORTED`，改為直連後連續連線皆正常。�
 API Key在控制頁輸入，只保留在後端程序記憶體：不寫入設定檔、不回傳給前端（連遮罩片段都沒有，
 只回報「已設定／未設定」）、不進入`localStorage`／`sessionStorage`／cookie／URL／log。
 
+### 字幕顯示範圍（每行字數 × 行數）
+
+在控制頁的「字幕顯示範圍」面板直接設定，**翻譯進行中也可以調整，會立即重新排版**，
+不需停止翻譯或重新整理：
+
+- **每行字數**（4–60）：以**全形字**計算。一行的容量是「字數 × 2 欄」，中文字佔 2 欄、
+  英數佔 1 欄。純中文即每行剛好 N 字；中英數混排時一行會放進更多字元，但**視覺寬度一致**
+  ——這是「字數」在混排下唯一講得通的定義。
+- **行數**（1–10）：顯示最新的 N 行（滑動視窗）。
+
+也可用 API 直接改：
+
+```bash
+curl -X PUT http://127.0.0.1:8765/api/settings/caption-layout -H "Content-Type: application/json" -d "{\"chars_per_line\":10,\"max_lines\":2}"
+```
+
+**斷行由後端統一產生**（`backend/app/captions/formatter.py`），結果放在
+`CaptionState.lines`，overlay 與之後的 vMix GT Title 渲染同一份，換行位置不可能不一致。
+規則包含中文標點禁則（`。、，！？」）`不落行首、`「（`不留行尾）與拉丁字詞不硬拆。
+`CaptionState.text` 仍是未格式化的完整累積尾端；`lines` 只是顯示視窗。
+
+**已知限制**：後端以欄數計算，瀏覽器以實際字型排版，比例字型下同欄數的兩行視覺寬度仍會
+略有差異。斷行以 code point 為單位，不做 grapheme 分群（2026-08-10 決議），ZWJ 組合表情
+若剛好落在行尾邊界可能被拆開；翻譯輸出以繁體中文為主，實務上不會遇到。
+
 ### Overlay 顯示參數
 
 `/overlay`可用query參數自訂，全部為樣式參數，不含任何credential：
@@ -296,7 +324,7 @@ API Key在控制頁輸入，只保留在後端程序記憶體：不寫入設定�
 | 參數 | 說明 | 預設 |
 |---|---|---|
 | `width` | 字幕框寬度（`1600`為px，`75%`為百分比） | `90%` |
-| `lines` | 顯示行數，等同滑動視窗大小（1–10） | `2` |
+| `lines` | **本頁**顯示行數上限（1–10），覆寫後端設定 | 後端設定值 |
 | `size` | 字級px（12–200） | `48` |
 | `font` | `sans`／`serif`／`mono`（白名單） | `sans` |
 | `color` | 文字色，嚴格`#RRGGBB` | `#FFFFFF` |
@@ -304,12 +332,13 @@ API Key在控制頁輸入，只保留在後端程序記憶體：不寫入設定�
 | `opacity` | 背景透明度0–1，`0`為完全透明 | `0.5` |
 | `align` | `left`／`center`／`right` | `left` |
 
-例如：`http://127.0.0.1:5173/overlay?lines=3&width=1600&size=56&opacity=0`
+例如：`http://localhost:5180/overlay?lines=1&width=1600&size=56&opacity=0`
 
 非法或超出範圍的參數一律fail closed回預設值。頁面背景恆為透明，供vMix Browser Input與
-OBS Browser Source去背；字幕框自己的底色由`bg`與`opacity`決定。行數以CSS換算成固定框高並
-貼齊底部，因此永遠顯示最新的N行——斷行由瀏覽器負責，後端`CaptionState`維持未格式化的
-canonical文字（vMix GT Title所需的後端斷行屬Stage 3.1）。
+OBS Browser Source去背；字幕框自己的底色由`bg`與`opacity`決定。
+
+`lines`**只覆寫這個 overlay 顯示幾行，不改後端斷行**——因此可以同時開兩個高度不同的
+Browser Input 吃同一份字幕。要改每行字數請用控制頁或 caption-layout API。
 
 ## 設定優先順序
 

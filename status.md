@@ -79,6 +79,23 @@
 - `finished_output_events` 仍為 0，`caption_sink` 的 `generation` 仍為 0——與上述發現 2、3 一致，
   已分別延到 Stage 3.1 與 Stage 4。
 
+### Stage 3.1（已實作，2026-08-10）
+計劃檔：`.hermes/plans/2026-08-10_105311-stage-3.1-caption-formatter.md`
+
+- `backend/app/captions/formatter.py`：`display_width()`（CJK／全形 2 欄、其餘 1 欄，
+  `Ambiguous` 固定 1）與 `wrap_caption()`（中文標點禁則、拉丁字詞不硬拆、滑動視窗）。
+- `CaptionState.lines`：顯示視窗；`text` 仍是 canonical 累積尾端。**斷行由後端統一產生**，
+  overlay 與 Stage 5 的 GT Title 渲染同一份。
+- `caption.chars_per_line`（4–60，預設 20）與 `caption.max_lines`（1–10，預設 2）。
+- `PUT /api/settings/caption-layout`：**執行中可用**（音訊來源仍 409），assembler 立即重排、
+  revision +1 讓 WebSocket 推播。
+- 控制頁「字幕顯示範圍」面板；`/overlay?lines=N` 降級為本頁顯示行數的覆寫。
+- **斷行以 code point 為單位，不做 grapheme 分群**（使用者決議）；限制已寫入 formatter
+  docstring 與 README。
+
+實測：面板 20/2 → 送出 6/5 即時生效（無需重整）、999 被 422 拒絕且生效值不變。
+**待使用者確認**：中英數混排的實際效果（使用者表示情況少見，有問題再回報）。
+
 ### ⏳ 待辦：v0.1 驗收剩餘項目（使用者有空時執行）
 
 `BUILD.md` 驗收標準之一「模擬網路錯誤與裝置錯誤不會使程式無預期結束」尚未實測，
