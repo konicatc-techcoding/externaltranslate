@@ -182,6 +182,76 @@ def test_fragments_after_reset_accumulate_from_empty() -> None:
     assert state.text == "新的"
 
 
+def test_state_carries_display_lines_alongside_canonical_text() -> None:
+    a = CaptionAssembler(chars_per_line=3, max_lines=2)
+    state = a.accept(output("一二三四五六七八", finished=False))
+
+    assert state is not None
+    # text stays the canonical accumulated tail; lines are the display window
+    assert state.text == "一二三四五六七八"
+    assert state.lines == ("四五六", "七八")
+
+
+def test_display_window_keeps_only_the_most_recent_lines() -> None:
+    a = CaptionAssembler(chars_per_line=2, max_lines=2)
+    a.accept(output("一二三四", finished=False))
+    state = a.accept(output("五六", finished=False))
+
+    assert state is not None
+    assert state.lines == ("三四", "五六")
+
+
+def test_session_boundary_retains_lines_with_the_retained_final() -> None:
+    # The final text survives rotation, so its lines must survive with it —
+    # otherwise the caption text stays while the display goes blank.
+    a = CaptionAssembler(chars_per_line=3, max_lines=2)
+    a.accept(output("一二三四", finished=True))
+    a.accept(stopped())
+
+    # accept() may return None here (nothing observable changed); what matters
+    # is that the retained final keeps both its text and its wrapped lines.
+    retained = a.current()
+    assert retained.text == "一二三四"
+    assert retained.lines == ("一二三", "四")
+
+
+def test_session_boundary_clearing_a_partial_also_clears_lines() -> None:
+    a = CaptionAssembler(chars_per_line=3, max_lines=2)
+    a.accept(output("一二三四", finished=False))
+    cleared = a.accept(stopped())
+
+    assert cleared is not None
+    assert cleared.text == ""
+    assert cleared.lines == ()
+
+
+def test_reset_clears_lines() -> None:
+    a = CaptionAssembler(chars_per_line=3, max_lines=2)
+    a.accept(output("一二三", finished=True))
+    assert a.reset().lines == ()
+
+
+def test_layout_change_reflows_immediately_and_bumps_revision() -> None:
+    a = CaptionAssembler(chars_per_line=6, max_lines=2)
+    a.accept(output("一二三四五六七八九", finished=False))
+    before = a.current()
+
+    after = a.set_layout(chars_per_line=3, max_lines=2)
+
+    assert after.text == before.text
+    assert after.lines == ("四五六", "七八九")
+    # without a new revision the socket would not push the reflow to the UI
+    assert after.revision == before.revision + 1
+    assert a.current() is after
+
+
+def test_layout_change_on_an_empty_caption_is_safe() -> None:
+    a = CaptionAssembler(chars_per_line=6, max_lines=2)
+    state = a.set_layout(chars_per_line=4, max_lines=3)
+    assert state.lines == ()
+    assert state.text == ""
+
+
 def test_control_characters_are_sanitized() -> None:
     a = CaptionAssembler()
     state = a.accept(output("你\x00好\x1b", finished=False))

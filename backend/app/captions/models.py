@@ -26,6 +26,11 @@ class CaptionState:
     language_code: str
     updated_at: float
     session_generation: int
+    #: Display window produced by the formatter. ``text`` stays the canonical
+    #: accumulated caption; ``lines`` is what a viewer sees, and every
+    #: consumer (web overlay, vMix GT title) renders the same lines so their
+    #: wrapping cannot diverge.
+    lines: tuple[str, ...] = ()
 
     @classmethod
     def initial(cls) -> CaptionState:
@@ -36,4 +41,5 @@ class CaptionState:
             language_code="",
             updated_at=0.0,
             session_generation=0,
+            lines=(),
         )

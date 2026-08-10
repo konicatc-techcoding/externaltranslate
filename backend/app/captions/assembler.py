@@ -3,10 +3,14 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 
+from backend.app.captions.formatter import wrap_caption
 from backend.app.captions.models import CaptionState, CaptionStatus
 from backend.app.captions.sanitizer import sanitize_caption
 from backend.app.captions.store import CaptionStore
 from backend.app.translation.models import TranslationEvent, TranslationEventKind
+
+DEFAULT_CHARS_PER_LINE = 20
+DEFAULT_MAX_LINES = 2
 
 _Now = Callable[[], float]
 
@@ -31,21 +35,58 @@ class CaptionAssembler:
 
     The accumulated text is trimmed from the front to ``max_payload_length``:
     continuous speech would otherwise grow without bound, and truncating the
-    tail would freeze the caption at the limit. Multi-line display windowing
-    remains Stage 3.1 work.
+    tail would freeze the caption at the limit.
+
+    Every state also carries ``lines``: the accumulated text wrapped to
+    ``chars_per_line`` full-width characters and windowed to the most recent
+    ``max_lines``. Wrapping lives here rather than in each consumer so the web
+    overlay and the vMix GT title cannot disagree about where a line breaks.
     """
 
     def __init__(
         self,
         *,
         max_payload_length: int = 4096,
+        chars_per_line: int = DEFAULT_CHARS_PER_LINE,
+        max_lines: int = DEFAULT_MAX_LINES,
         now: _Now | None = None,
     ) -> None:
         self._max_payload_length = max_payload_length
+        self._chars_per_line = chars_per_line
+        self._max_lines = max_lines
         self._now = now or time.monotonic
         self._state = CaptionState.initial()
 
     def current(self) -> CaptionState:
+        return self._state
+
+    def _wrap(self, text: str) -> tuple[str, ...]:
+        return wrap_caption(
+            text,
+            chars_per_line=self._chars_per_line,
+            max_lines=self._max_lines,
+        )
+
+    def set_layout(self, *, chars_per_line: int, max_lines: int) -> CaptionState:
+        """Re-flow the current caption for a new layout, without interrupting.
+
+        The revision advances so downstream sockets push the new wrapping;
+        an unchanged revision would leave the UI showing the old lines.
+        """
+        if chars_per_line < 1 or max_lines < 1:
+            raise ValueError("chars_per_line 與 max_lines 必須大於 0。")
+        self._chars_per_line = chars_per_line
+        self._max_lines = max_lines
+        state = self._state
+        self._state = CaptionState(
+            revision=state.revision + 1,
+            status=state.status,
+            text=state.text,
+            language_code=state.language_code,
+            updated_at=self._now(),
+            session_generation=state.session_generation,
+            lines=self._wrap(state.text),
+        )
         return self._state
 
     def reset(self) -> CaptionState:
@@ -62,6 +103,7 @@ class CaptionAssembler:
             language_code=state.language_code,
             updated_at=self._now(),
             session_generation=state.session_generation,
+            lines=(),
         )
         return self._state
 
@@ -98,6 +140,7 @@ class CaptionAssembler:
             language_code=event.language_code or state.language_code,
             updated_at=self._now(),
             session_generation=state.session_generation,
+            lines=self._wrap(text),
         )
         self._state = next_state
         return next_state
@@ -121,6 +164,7 @@ class CaptionAssembler:
                 language_code=state.language_code,
                 updated_at=self._now(),
                 session_generation=generation,
+                lines=state.lines,
             )
         else:
             next_state = CaptionState(
