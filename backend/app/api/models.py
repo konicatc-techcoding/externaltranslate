@@ -179,6 +179,10 @@ class RuntimeStatusResponse(StrictModel):
     caption: CaptionPayload
     meter: MeterPayload | None
     last_error: str | None
+    #: Why the audio source saved last time could not be restored, if it
+    #: could not. Silently falling back to no selection would read as the
+    #: setting having been forgotten.
+    audio_notice: str | None = None
 
 
 class CaptionPresetItem(StrictModel):

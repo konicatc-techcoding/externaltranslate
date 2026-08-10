@@ -31,6 +31,7 @@ def _push_key(snapshot: RuntimeSnapshot) -> tuple[Any, ...]:
         snapshot.last_error,
         snapshot.layout,
         tuple(sorted(snapshot.style.items())),
+        snapshot.audio_notice,
     )
 
 

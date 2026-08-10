@@ -56,3 +56,17 @@ def test_serve_accepts_an_explicit_port() -> None:
     main(["--port", "9100"], emit=lines.append, runner=lambda app, **kwargs: None)
     assert json.loads(lines[0])["port"] == 9100
     assert default_port != 9100
+
+
+def test_serve_restores_the_saved_audio_source(monkeypatch: Any) -> None:
+    # Without this the operator's saved microphone is only in the file; the
+    # index it maps to has to be resolved at every start.
+    calls: list[str] = []
+    monkeypatch.setattr(
+        "backend.app.services.runtime.PipelineRuntime.restore_audio_selection",
+        lambda self: calls.append("restored"),
+    )
+
+    main([], emit=lambda _line: None, runner=lambda app, **kwargs: None)
+
+    assert calls == ["restored"]

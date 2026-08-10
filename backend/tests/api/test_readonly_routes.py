@@ -56,6 +56,9 @@ def client() -> Iterator[TestClient]:
         _SETTINGS,
         source_factory=lambda _settings: pytest.fail("source must not be built"),
         provider_factory=lambda **_kwargs: pytest.fail("provider must not be built"),
+        # Keep device identity lookups off this machine's real hardware.
+        device_lister=lambda: [_DEVICE],
+        loopback_lister=lambda: [_ENDPOINT],
     )
     app = create_app(
         runtime=runtime,

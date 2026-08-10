@@ -125,6 +125,10 @@ def _runtime(
         source_factory=source_factory,
         provider_factory=provider_factory,
         user_settings_path=user_settings_path,
+        # Never touch real hardware from a unit test; the device identity
+        # lookup would otherwise enumerate this machine's audio devices.
+        device_lister=lambda: [],
+        loopback_lister=lambda: [],
     )
     return runtime, created, used_provider
 
@@ -437,9 +441,10 @@ def test_persistence_never_writes_the_api_key(tmp_path: Any) -> None:
     assert "api_key" not in user_settings.read_text(encoding="utf-8")
 
 
-def test_audio_selection_is_not_persisted(tmp_path: Any) -> None:
-    # Device indexes mean different hardware on another machine, and change on
-    # replug even here; carrying them over would capture the wrong source.
+def test_the_audio_device_index_is_never_persisted(tmp_path: Any) -> None:
+    # A device index means different hardware on another machine, and changes
+    # on replug even here; carrying it over would capture the wrong source.
+    # Only the device identity is saved — see test_runtime_audio_identity.py.
     user_settings = tmp_path / "user.yaml"
     runtime, _created, _provider = _runtime(user_settings_path=user_settings)
 
@@ -447,7 +452,9 @@ def test_audio_selection_is_not_persisted(tmp_path: Any) -> None:
         source_kind="input_device", device_index=7, endpoint_index=None, channel=1
     )
 
-    assert not user_settings.exists()
+    stored = user_settings.read_text(encoding="utf-8")
+    assert "device_index" not in stored
+    assert "7" not in stored
 
 
 def test_a_failing_write_does_not_break_the_setting_change(tmp_path: Any) -> None:

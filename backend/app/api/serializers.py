@@ -58,4 +58,5 @@ def runtime_status_response(snapshot: RuntimeSnapshot) -> RuntimeStatusResponse:
             clipping=meter.clipping,
         ),
         last_error=snapshot.last_error,
+        audio_notice=snapshot.audio_notice,
     )

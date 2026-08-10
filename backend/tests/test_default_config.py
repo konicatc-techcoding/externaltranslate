@@ -17,7 +17,10 @@ def test_project_default_config_is_non_secret_and_loopback_only() -> None:
     assert settings["audio"] == {
         "source_kind": "input_device",
         "device_index": None,
+        "device_name": None,
+        "device_host_api": None,
         "loopback_endpoint_index": None,
+        "loopback_endpoint_name": None,
         "channel": 1,
         "target_sample_rate": 16000,
         "chunk_duration_ms": 100,

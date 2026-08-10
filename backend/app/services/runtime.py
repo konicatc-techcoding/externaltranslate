@@ -7,11 +7,16 @@ from contextlib import suppress
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, TypeVar
 
 from backend.app.audio.capture import create_audio_source_from_settings
 from backend.app.audio.devices import AudioDeviceError
-from backend.app.audio.models import MeterReading
+from backend.app.audio.identity import resolve_device_index, resolve_endpoint_index
+from backend.app.audio.models import (
+    AudioDeviceInfo,
+    LoopbackEndpointInfo,
+    MeterReading,
+)
 from backend.app.audio.sources.base import AudioSource
 from backend.app.audio.sources.input_device import AudioCaptureError
 from backend.app.audio.sources.wasapi_loopback import (
@@ -84,11 +89,43 @@ class RuntimeSnapshot:
     elapsed_seconds: float
     layout: tuple[int, int]
     style: dict[str, Any]
+    audio_notice: str | None
 
 
 SourceFactory = Callable[[Mapping[str, Any]], AudioSource]
 ProviderFactory = Callable[..., TranslationProvider]
 PipelineFactory = Callable[..., TranslationPipeline]
+DeviceLister = Callable[[], list[AudioDeviceInfo]]
+LoopbackLister = Callable[[], list[LoopbackEndpointInfo]]
+
+
+def _enumerate_devices() -> list[AudioDeviceInfo]:
+    from backend.app.audio.devices import SoundDeviceBackend, enumerate_input_devices
+
+    return enumerate_input_devices(SoundDeviceBackend())
+
+
+def _enumerate_endpoints() -> list[LoopbackEndpointInfo]:
+    from backend.app.audio.sources.wasapi_loopback import enumerate_loopback_endpoints
+
+    return enumerate_loopback_endpoints()
+
+
+_Listed = TypeVar("_Listed")
+
+
+def _enumerate_safely(
+    lister: Callable[[], list[_Listed]], failure_notice: str
+) -> tuple[list[_Listed], str | None]:
+    """Enumerate devices without letting a driver problem stop startup."""
+    try:
+        return (lister(), None)
+    except Exception:
+        return ([], failure_notice)
+
+
+def _optional_str(value: Any) -> str | None:
+    return value if isinstance(value, str) and value else None
 
 
 class PipelineRuntime:
@@ -108,12 +145,17 @@ class PipelineRuntime:
         pipeline_factory: PipelineFactory = TranslationPipeline,
         preset_store: PresetStore | None = None,
         user_settings_path: Path | None = None,
+        device_lister: DeviceLister = _enumerate_devices,
+        loopback_lister: LoopbackLister = _enumerate_endpoints,
     ) -> None:
         self._settings: dict[str, Any] = deepcopy(dict(settings))
         self._source_factory = source_factory
         self._provider_factory = provider_factory
         self._pipeline_factory = pipeline_factory
         self._user_settings_path = user_settings_path
+        self._device_lister = device_lister
+        self._loopback_lister = loopback_lister
+        self._audio_notice: str | None = None
         self._preset_store = preset_store or PresetStore(
             Path(__file__).resolve().parents[3] / "config" / "caption-presets.json"
         )
@@ -226,12 +268,94 @@ class PipelineRuntime:
         if source_kind == "input_device":
             audio["device_index"] = device_index
             audio["loopback_endpoint_index"] = None
+            audio["loopback_endpoint_name"] = None
             if channel is not None:
                 audio["channel"] = channel
+            identity = self._identify_device(device_index)
+            audio["device_name"] = identity[0]
+            audio["device_host_api"] = identity[1]
         else:
             audio["device_index"] = None
+            audio["device_name"] = None
+            audio["device_host_api"] = None
             audio["loopback_endpoint_index"] = endpoint_index
+            audio["loopback_endpoint_name"] = self._identify_endpoint(endpoint_index)
         self._settings["audio"] = audio
+        # The operator has just answered the question the notice asked.
+        self._audio_notice = None
+        self._persist_audio_selection()
+
+    def _identify_device(self, index: int | None) -> tuple[str | None, str | None]:
+        """Look up the stable identity of a device index, if it has one."""
+        if index is None:
+            return (None, None)
+        try:
+            devices = self._device_lister()
+        except Exception:
+            # Recording a name we could not verify would restore an
+            # unverified device on the next start.
+            return (None, None)
+        for item in devices:
+            if item.index == index:
+                return (item.name, item.host_api)
+        return (None, None)
+
+    def _identify_endpoint(self, index: int | None) -> str | None:
+        if index is None:
+            # `None` already means "the current Windows default output", which
+            # needs no lookup and is correct on any machine.
+            return None
+        try:
+            endpoints = self._loopback_lister()
+        except Exception:
+            return None
+        for item in endpoints:
+            if item.index == index:
+                return item.name
+        return None
+
+    def restore_audio_selection(self) -> None:
+        """Recover the last audio source by name, at startup.
+
+        Indexes are never restored from the settings file: an index is a
+        position in an enumeration, so the same number can mean different
+        hardware after a replug, a reboot, or on another machine. If the saved
+        device cannot be identified beyond doubt, the selection stays empty
+        and ``audio_notice`` says why — being asked to choose again is much
+        cheaper than silently capturing the wrong source.
+        """
+        audio = dict(self._settings.get("audio") or {})
+        source_kind = audio.get("source_kind")
+        if not _optional_str(audio.get("device_name")) and not _optional_str(
+            audio.get("loopback_endpoint_name")
+        ):
+            return  # nothing was saved, so there is nothing to look up
+        if source_kind == "input_device":
+            name = _optional_str(audio.get("device_name"))
+            devices, failure = _enumerate_safely(
+                self._device_lister,
+                "無法列舉音訊裝置，未能還原上次的音訊來源；請重新選擇。",
+            )
+            resolved = resolve_device_index(
+                devices, name=name, host_api=_optional_str(audio.get("device_host_api"))
+            )
+            audio["device_index"] = resolved.index
+            self._audio_notice = (failure if name else None) or resolved.notice
+        elif source_kind == "wasapi_loopback":
+            name = _optional_str(audio.get("loopback_endpoint_name"))
+            endpoints, failure = _enumerate_safely(
+                self._loopback_lister,
+                "無法列舉系統音源，已改用 Windows 目前的預設輸出。",
+            )
+            resolved = resolve_endpoint_index(endpoints, name=name)
+            audio["loopback_endpoint_index"] = resolved.index
+            self._audio_notice = (failure if name else None) or resolved.notice
+        self._settings["audio"] = audio
+
+    @property
+    def audio_notice(self) -> str | None:
+        """Why the saved audio source could not be restored, if it could not."""
+        return self._audio_notice
 
     def update_caption_layout(self, *, chars_per_line: int, max_lines: int) -> None:
         """Change the display layout, re-flowing immediately.
@@ -346,6 +470,29 @@ class PipelineRuntime:
                 "max_lines": max_lines,
                 **caption_style(self._settings),
                 "max_payload_length": caption.get("max_payload_length", 4096),
+            }
+        }
+        with suppress(ConfigurationError, OSError):
+            self._persist(path, payload)
+
+    def _persist_audio_selection(self) -> None:
+        """Remember the audio source by identity, never by index.
+
+        Writing an index would look like it worked and then open different
+        hardware after a replug or on another machine. A name that cannot be
+        resolved on the next start simply leaves the source unselected.
+        """
+        path = self._user_settings_path
+        if path is None:
+            return
+        audio = dict(self._settings.get("audio") or {})
+        payload = {
+            "audio": {
+                "source_kind": audio.get("source_kind"),
+                "channel": audio.get("channel"),
+                "device_name": audio.get("device_name"),
+                "device_host_api": audio.get("device_host_api"),
+                "loopback_endpoint_name": audio.get("loopback_endpoint_name"),
             }
         }
         with suppress(ConfigurationError, OSError):
@@ -490,4 +637,5 @@ class PipelineRuntime:
             caption=self._caption_store.snapshot(),
             meter=source.latest_meter if source is not None else None,
             last_error=self._last_error,
+            audio_notice=self._audio_notice,
         )

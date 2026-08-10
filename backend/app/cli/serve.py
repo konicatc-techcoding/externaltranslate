@@ -38,9 +38,11 @@ def main(
         )
         host = resolve_bind_host(args.host)
         port = args.port if args.port is not None else int(settings["server"]["port"])
-        app = create_app(
-            runtime=PipelineRuntime(settings, user_settings_path=user_config)
-        )
+        runtime = PipelineRuntime(settings, user_settings_path=user_config)
+        # The file remembers the device by name; the index it has on this
+        # machine, right now, can only be resolved here.
+        runtime.restore_audio_selection()
+        app = create_app(runtime=runtime)
     except ConfigurationError as exc:
         emit(json.dumps({"status": "error", "message": str(exc)}, ensure_ascii=False))
         return 1

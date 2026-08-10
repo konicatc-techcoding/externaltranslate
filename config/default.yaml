@@ -20,8 +20,14 @@ caption:
 
 audio:
   source_kind: input_device
+  # The index is resolved from the name at every start: an index is a position
+  # in an enumeration, so the same number means different hardware after a
+  # replug or on another machine. Only the name travels.
   device_index: null
+  device_name: null
+  device_host_api: null
   loopback_endpoint_index: null
+  loopback_endpoint_name: null
   channel: 1
   target_sample_rate: 16000
   chunk_duration_ms: 100

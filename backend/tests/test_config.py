@@ -338,3 +338,88 @@ def test_load_settings_rejects_unknown_caption_field(tmp_path: Path) -> None:
 
     with pytest.raises(ConfigurationError, match="caption.line_width"):
         load_settings(default_path=default_path)
+
+
+_AUDIO_BLOCK = (
+    "audio:\n"
+    "  source_kind: {kind}\n"
+    "  device_index: null\n"
+    "  loopback_endpoint_index: null\n"
+    "  channel: 1\n"
+    "  target_sample_rate: 16000\n"
+    "  chunk_duration_ms: 100\n"
+    "  raw_queue_capacity: 32\n"
+    "  pcm_queue_capacity: 50\n"
+)
+
+
+def test_load_settings_accepts_a_saved_device_identity(tmp_path: Path) -> None:
+    # The name, not the index, is what survives a replug or another machine.
+    default_path = tmp_path / "default.yaml"
+    default_path.write_text(
+        _AUDIO_BLOCK.format(kind="input_device")
+        + "  device_name: Scarlett 2i2 USB\n"
+        + "  device_host_api: Windows WASAPI\n",
+        encoding="utf-8",
+    )
+
+    settings = load_settings(default_path=default_path)
+
+    assert settings["audio"]["device_name"] == "Scarlett 2i2 USB"
+    assert settings["audio"]["device_host_api"] == "Windows WASAPI"
+
+
+def test_load_settings_accepts_a_saved_endpoint_name(tmp_path: Path) -> None:
+    default_path = tmp_path / "default.yaml"
+    default_path.write_text(
+        _AUDIO_BLOCK.format(kind="wasapi_loopback") + "  loopback_endpoint_name: HDMI\n",
+        encoding="utf-8",
+    )
+
+    settings = load_settings(default_path=default_path)
+
+    assert settings["audio"]["loopback_endpoint_name"] == "HDMI"
+
+
+@pytest.mark.parametrize("value", [5, "", "   ", True, "x" * 201])
+def test_load_settings_rejects_an_invalid_device_name(
+    tmp_path: Path, value: object
+) -> None:
+    default_path = tmp_path / "default.yaml"
+    default_path.write_text(_AUDIO_BLOCK.format(kind="input_device"), encoding="utf-8")
+
+    with pytest.raises(ConfigurationError, match="device_name"):
+        load_settings(
+            default_path=default_path,
+            runtime_overrides={"audio": {"device_name": value}},
+        )
+
+
+def test_load_settings_keeps_the_source_kinds_exclusive_for_names(
+    tmp_path: Path,
+) -> None:
+    # Same XOR the indexes already obey: a saved identity for the source kind
+    # that is not selected would quietly come back on the next start.
+    default_path = tmp_path / "default.yaml"
+    default_path.write_text(
+        _AUDIO_BLOCK.format(kind="wasapi_loopback"), encoding="utf-8"
+    )
+
+    with pytest.raises(ConfigurationError, match="device_name"):
+        load_settings(
+            default_path=default_path,
+            runtime_overrides={"audio": {"device_name": "Scarlett 2i2 USB"}},
+        )
+
+
+def test_load_settings_rejects_an_endpoint_name_for_an_input_device(
+    tmp_path: Path,
+) -> None:
+    default_path = tmp_path / "default.yaml"
+    default_path.write_text(_AUDIO_BLOCK.format(kind="input_device"), encoding="utf-8")
+
+    with pytest.raises(ConfigurationError, match="loopback_endpoint_name"):
+        load_settings(
+            default_path=default_path,
+            runtime_overrides={"audio": {"loopback_endpoint_name": "HDMI"}},
+        )

@@ -22,7 +22,10 @@ _SECRET_KEYS = {
 _AUDIO_KEYS = {
     "source_kind",
     "device_index",
+    "device_name",
+    "device_host_api",
     "loopback_endpoint_index",
+    "loopback_endpoint_name",
     "channel",
     "target_sample_rate",
     "chunk_duration_ms",
@@ -68,6 +71,10 @@ DEFAULT_SCROLL = True
 # looser turns a colour field into a style injection point.
 HEX_COLOR = re.compile(r"^#[0-9A-Fa-f]{6}$")
 DEFAULT_CAPTION_COLOR = "#FFFFFF"
+
+# Windows device names are short; a longer value is a sign the field is being
+# used for something it is not.
+MAX_DEVICE_NAME_LENGTH = 200
 
 
 class ConfigurationError(ValueError):
@@ -223,6 +230,23 @@ def _validate_audio_settings(settings: Settings) -> None:
             "wasapi_loopback 與 device_index 不可同時設定。"
         )
 
+    # A device is remembered by name, never by index: an index is a position
+    # in an enumeration, so it means different hardware after a replug or on
+    # another machine. The index is resolved from the name at startup.
+    _require_optional_name(audio, "device_name")
+    _require_optional_name(audio, "device_host_api")
+    _require_optional_name(audio, "loopback_endpoint_name")
+    if source_kind == "wasapi_loopback" and audio.get("device_name") is not None:
+        raise ConfigurationError(
+            "wasapi_loopback 與 audio.device_name 不可同時設定。"
+        )
+    if source_kind == "input_device" and (
+        audio.get("loopback_endpoint_name") is not None
+    ):
+        raise ConfigurationError(
+            "input_device 與 audio.loopback_endpoint_name 不可同時設定。"
+        )
+
     _require_bounded_audio_int(audio, "channel", minimum=1, maximum=64)
     _require_fixed_audio_int(audio, "target_sample_rate", expected=16000)
     _require_fixed_audio_int(audio, "chunk_duration_ms", expected=100)
@@ -372,6 +396,21 @@ def _require_fixed_audio_int(
     if isinstance(value, bool) or value != expected:
         raise ConfigurationError(
             f"audio.{field} 目前版本固定為 {expected}，其他值尚未接線至 runtime。"
+        )
+
+
+def _require_optional_name(audio: Mapping[str, Any], field: str) -> None:
+    value = audio.get(field)
+    if value is None:
+        return
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, str)
+        or not value.strip()
+        or len(value) > MAX_DEVICE_NAME_LENGTH
+    ):
+        raise ConfigurationError(
+            f"audio.{field} 必須是 null 或 1 到 {MAX_DEVICE_NAME_LENGTH} 字元的非空字串。"
         )
 
 
