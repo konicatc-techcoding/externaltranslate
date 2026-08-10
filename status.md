@@ -79,6 +79,29 @@
 - `finished_output_events` 仍為 0，`caption_sink` 的 `generation` 仍為 0——與上述發現 2、3 一致，
   已分別延到 Stage 3.1 與 Stage 4。
 
+### ⏳ 待辦：v0.1 驗收剩餘項目（使用者有空時執行）
+
+`BUILD.md` 驗收標準之一「模擬網路錯誤與裝置錯誤不會使程式無預期結束」尚未實測，
+目前是 v0.1 的 blocker。使用者已表示有空時進行（2026-08-10）。
+
+- [ ] **斷網測試**：翻譯執行中中斷網路數秒後恢復。預期：`gemini_provider` 進入 `backoff`
+      並顯示 attempt／delay，恢復後重新 `connected`；服務不崩潰，錯誤訊息為繁體中文。
+- [ ] **裝置錯誤測試**：翻譯執行中停用或拔除正在使用的音訊裝置。預期：`audio_source`
+      轉為 `error`，pipeline 安全停止，UI 顯示可行動的繁體中文訊息，之後仍可重新 Start。
+- [ ] 兩項結果補進 `docs/reports/v0.1-verification.md` §5（目前標為 C｜未驗證）。
+
+### 已決議（2026-08-10，字幕版面）
+- **vMix 會同時使用 GT Title 與 Browser Input** → **Stage 3.1 升級為 Stage 5 的硬前置條件**。
+  GT Title 是文字欄位、沒有瀏覽器可排版，必須由後端送出已切好行的文字；且兩個畫面必須共用
+  同一份 `CaptionState.lines`，否則換行位置不一致。
+- **顯示範圍以「每行字數 × 行數」定義**（例如每行 10 字 2 行、每行 6 字 5 行），字數以全形寬
+  計算（CJK 一格、ASCII 半格）。實作為 `caption.chars_per_line` 與 `caption.max_lines`。
+- **控制頁要能直接調整這兩個值**並即時生效；設定為單一真實來源，`/overlay` 的 query param
+  僅作單一實例的臨時覆寫。
+- **不先做 CSS `em` 的近似版**：只有純中文準確，且會與 Stage 3.1 的正式行為並存造成混淆。
+  v0.1 維持現有的 `lines`（視覺行數）。
+- 以上皆已寫入 `PLAN.md` 的 Stage 3.1 與 Stage 5。
+
 ### 已決議（2026-08-09，使用者拍板）
 - **發現 3（adapter 補送 session 事件）→ 延到 Stage 4**，已記入 `PLAN.md` Stage 4 的
   「從 Stage 3.2 帶入的待辦」。理由：現在功能不受影響，且會動到 Stage 2 已過 review 的 adapter，

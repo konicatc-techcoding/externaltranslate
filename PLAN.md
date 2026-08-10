@@ -636,6 +636,24 @@ npm --prefix frontend run test:e2e
 - 滑動窗口。
 - partial/final 樣式區分。
 - 中英文、emoji、combining character 測試。
+- **以「字數 × 行數」定義顯示範圍**（2026-08-10 使用者決議）：使用者要能自由指定
+  「每行 10 字 2 行」或「每行 6 字 5 行」。實作為後端設定 `caption.chars_per_line` 與
+  `caption.max_lines`（strict schema，可經 settings API 即時調整），`CaptionState` 增加
+  `lines: tuple[str, ...]` 與既有的 `text` 並存。
+  - **字數以「全形寬」計**：CJK 一格、ASCII 半格，避免中英數混排時「字數」失去意義。
+  - **斷行一律由後端產生，兩個消費端共用同一份 `lines`**：使用者確認 vMix 會**同時**使用
+    Browser Input 與 GT Title；若 overlay 繼續用 CSS 斷行、GT Title 用後端斷行，兩個畫面的
+    換行位置會不一致。因此 Stage 3.1 完成後，`/overlay` 改為直接渲染後端的 `lines`，
+    `lines` query param 退化為顯示上限的覆寫值。
+  - **不先做近似版**（使用者決議）：以 `em` 換算寬度的近似「每行 N 字」只有純中文準確，
+    且會與 Stage 3.1 的正式行為並存造成混淆。v0.1 維持現有的 `lines`（視覺行數）。
+  - **控制頁要能直接調整**（2026-08-10 使用者需求）：新增字幕顯示面板，讓使用者在頁面上
+    設定「每行字數」與「行數」，經 settings API 寫入並即時生效，不必改網址或重啟。
+    設定為單一真實來源，overlay 與 GT Title 同步套用；`/overlay` 的 query param 僅作為
+    單一實例的臨時覆寫（例如同時開兩個不同尺寸的 Browser Input）。調整時應即時預覽，
+    因為斷行結果要親眼看過才知道合不合用。
+    - 預計檔案追加：`frontend/src/components/CaptionLayoutSettings.tsx`、對應測試，
+      以及 `backend/app/api/models.py`／`routes/settings.py` 的 caption 欄位擴充。
 - **句尾標點收束規則**（Stage 3.2 真實 smoke 後決議，2026-08-09）：Gemini Live 在連續語音下
   幾乎不送 `finished=true`（實測 23 筆 output 全為 interim），字幕會一直維持 partial。是否以
   `。！？.!?` 之類的句尾標點把累積文字升級為 final、由下一個片段開新字幕，留待此 Stage 連同
@@ -647,8 +665,16 @@ npm --prefix frontend run test:e2e
 ```text
 Create: backend/app/captions/formatter.py
 Create: backend/tests/captions/test_formatter.py
-Modify: backend/app/captions/models.py
+Create: frontend/src/components/CaptionLayoutSettings.tsx
+Create: frontend/src/components/CaptionLayoutSettings.test.tsx
+Modify: backend/app/captions/models.py          (CaptionState.lines)
+Modify: backend/app/captions/assembler.py       (套用 formatter)
 Modify: backend/app/captions/store.py
+Modify: backend/app/config.py                   (caption.chars_per_line / max_lines)
+Modify: backend/app/api/models.py               (settings 讀寫 caption 版面)
+Modify: backend/app/api/routes/settings.py
+Modify: frontend/src/pages/ControlPage.tsx
+Modify: frontend/src/pages/OverlayPage.tsx      (改渲染後端 lines)
 ```
 
 ## Stage 4.1：Overlay Style Refinement
@@ -668,6 +694,10 @@ Modify: backend/app/captions/store.py
 # v0.3：vMix Integration
 
 ## Stage 5：vMix HTTP API、GT Title 與 Browser Input
+
+> **硬前置條件：Stage 3.1 必須先完成**（2026-08-10 決議）。使用者會同時使用 GT Title 與
+> Browser Input：GT Title 是文字欄位、沒有瀏覽器可排版，必須由後端送出已切好行的文字；
+> 而兩個畫面必須共用同一份 `CaptionState.lines`，否則換行位置會不一致。
 
 ### 能力
 

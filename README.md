@@ -20,7 +20,10 @@ ExternalTranslate 是 Windows 本機優先的即時翻譯字幕應用程式。�
   空白處理、session reset保留final），並新增`caption.max_payload_length` strict schema。
   Gemini Live的output transcription為**增量片段**，assembler會累加片段；累積文字超過
   `caption.max_payload_length`時保留最新的尾端，不會停在上限。
-- **Stage 3.2（驗證中）**：`backend/app/status/`（models／store／publisher）提供runtime元件
+- **Stage 4 Phase A/B（驗證中）**：只綁`127.0.0.1`的FastAPI控制服務、`PipelineRuntime`、
+  caption WebSocket，以及繁體中文控制頁與`/overlay`。真實端到端smoke尚未完成前，
+  不視為Stage 4／v0.1驗收通過。
+- **Stage 3.2**：`backend/app/status/`（models／store／publisher）提供runtime元件
   狀態與sanitized structured log，session supervisor在連線、rotation、backoff與fail-closed
   時發布狀態；CLI新增`--status-events`與`--caption-state`。真實Gemini smoke尚未完成前，
   不視為Stage 3.2驗收通過。
@@ -252,6 +255,61 @@ configuration與policy錯誤fail closed，不會無限重試。換線期間沿�
 bounded drop-oldest queue；唯一的persistent PCM reader位於Gemini sessions外層，透過
 容量1的drop-oldest async handoff供當前session sender消費。Rotation不會建立第二個
 `get_pcm_chunk()` consumer，也不建立無界buffer或追送長時間過期音訊。
+
+## 啟動本機應用（Stage 4）
+
+開兩個終端機。後端：
+
+```bash
+uv run externaltranslate-serve
+```
+
+前端（開發模式）：
+
+```bash
+npm --prefix frontend run dev
+```
+
+控制頁在 <http://localhost:5180>，Overlay在 <http://localhost:5180/overlay>。
+
+開發模式的埠固定為5180（`strictPort`），避免被其他工具佔用後靜默改號。Vite只綁定
+`localhost`，用`127.0.0.1:5180`會連不上，請用`localhost`。HTTP走Vite proxy到
+`127.0.0.1:8765`；**WebSocket不走proxy**，直接連後端——Vite 8的ws proxy在此環境會在
+upgrade階段丟`write ECONNABORTED`，改為直連後連續連線皆正常。正式build由後端自行提供，
+屆時同源，不需要任何proxy。
+
+由於dev的WebSocket是跨來源，後端對`/ws/captions`檢查`Origin`：只接受loopback來源
+（`localhost`／`127.0.0.1`／`::1`），其他一律以1008關閉。瀏覽器不對WebSocket套用同源政策，
+沒有這道檢查的話，任何網頁都能連上本機讀取字幕。無`Origin`的非瀏覽器用戶端（CLI、測試）
+不受限。
+
+服務**只會綁定`127.0.0.1`**；
+`--host`傳入任何非loopback位址會直接失敗且不啟動server，`features.lan_access`也不會放行。
+
+API Key在控制頁輸入，只保留在後端程序記憶體：不寫入設定檔、不回傳給前端（連遮罩片段都沒有，
+只回報「已設定／未設定」）、不進入`localStorage`／`sessionStorage`／cookie／URL／log。
+
+### Overlay 顯示參數
+
+`/overlay`可用query參數自訂，全部為樣式參數，不含任何credential：
+
+| 參數 | 說明 | 預設 |
+|---|---|---|
+| `width` | 字幕框寬度（`1600`為px，`75%`為百分比） | `90%` |
+| `lines` | 顯示行數，等同滑動視窗大小（1–10） | `2` |
+| `size` | 字級px（12–200） | `48` |
+| `font` | `sans`／`serif`／`mono`（白名單） | `sans` |
+| `color` | 文字色，嚴格`#RRGGBB` | `#FFFFFF` |
+| `bg` | 字幕框背景色，嚴格`#RRGGBB` | `#000000` |
+| `opacity` | 背景透明度0–1，`0`為完全透明 | `0.5` |
+| `align` | `left`／`center`／`right` | `left` |
+
+例如：`http://127.0.0.1:5173/overlay?lines=3&width=1600&size=56&opacity=0`
+
+非法或超出範圍的參數一律fail closed回預設值。頁面背景恆為透明，供vMix Browser Input與
+OBS Browser Source去背；字幕框自己的底色由`bg`與`opacity`決定。行數以CSS換算成固定框高並
+貼齊底部，因此永遠顯示最新的N行——斷行由瀏覽器負責，後端`CaptionState`維持未格式化的
+canonical文字（vMix GT Title所需的後端斷行屬Stage 3.1）。
 
 ## 設定優先順序
 
