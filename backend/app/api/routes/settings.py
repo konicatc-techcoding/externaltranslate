@@ -7,10 +7,15 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from backend.app.api.dependencies import get_runtime
 from backend.app.api.models import (
     CaptionLayoutUpdate,
+    CaptionStyleUpdate,
     SettingsResponse,
     SettingsUpdate,
 )
-from backend.app.config import caption_layout, caption_max_payload_length
+from backend.app.config import (
+    caption_layout,
+    caption_max_payload_length,
+    caption_style,
+)
 from backend.app.services.runtime import (
     PipelineRuntime,
     RuntimeConflictError,
@@ -31,6 +36,11 @@ def _to_response(settings: Any) -> SettingsResponse:
         caption_max_payload_length=caption_max_payload_length(settings),
         caption_chars_per_line=caption_layout(settings)[0],
         caption_max_lines=caption_layout(settings)[1],
+        caption_font=caption_style(settings)["font"],
+        caption_size=caption_style(settings)["size"],
+        caption_scroll=caption_style(settings)["scroll"],
+        caption_scroll_ms=caption_style(settings)["scroll_ms"],
+        caption_color=caption_style(settings)["color"],
         session_rotation_seconds=gemini["session_rotation_seconds"],
     )
 
@@ -74,6 +84,27 @@ def update_caption_layout(
     try:
         runtime.update_caption_layout(
             chars_per_line=payload.chars_per_line, max_lines=payload.max_lines
+        )
+    except RuntimeSelectionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
+        ) from None
+    return _to_response(runtime.settings)
+
+
+@router.put("/settings/caption-style", response_model=SettingsResponse)
+def update_caption_style(
+    payload: CaptionStyleUpdate,
+    runtime: Annotated[PipelineRuntime, Depends(get_runtime)],
+) -> SettingsResponse:
+    """Change overlay appearance, allowed while translating."""
+    try:
+        runtime.update_caption_style(
+            font=payload.font,
+            size=payload.size,
+            scroll=payload.scroll,
+            scroll_ms=payload.scroll_ms,
+            color=payload.color,
         )
     except RuntimeSelectionError as exc:
         raise HTTPException(

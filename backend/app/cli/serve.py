@@ -30,12 +30,17 @@ def main(
     args = _parser().parse_args(argv)
     project_root = Path(__file__).resolve().parents[3]
     try:
+        # Settings the operator changed last time live here; the same file
+        # is what they copy to move a setup to another machine.
+        user_config = args.user_config or project_root / "config" / "user.yaml"
         settings: dict[str, Any] = load_settings(
-            project_root / "config" / "default.yaml", args.user_config, None
+            project_root / "config" / "default.yaml", user_config, None
         )
         host = resolve_bind_host(args.host)
         port = args.port if args.port is not None else int(settings["server"]["port"])
-        app = create_app(runtime=PipelineRuntime(settings))
+        app = create_app(
+            runtime=PipelineRuntime(settings, user_settings_path=user_config)
+        )
     except ConfigurationError as exc:
         emit(json.dumps({"status": "error", "message": str(exc)}, ensure_ascii=False))
         return 1

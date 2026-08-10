@@ -6,6 +6,9 @@ keys.txt
 config/user.yaml
 config/local.yaml
 
+# Locally saved caption presets
+config/caption-presets.json
+
 # Python
 .venv/
 __pycache__/

@@ -13,7 +13,14 @@ from backend.app.api.dependencies import (
     get_prerequisite_reporter,
     get_runtime,
 )
-from backend.app.api.routes import catalog, credentials, pipeline, settings
+from backend.app.api.routes import (
+    captions,
+    catalog,
+    credentials,
+    pipeline,
+    presets,
+    settings,
+)
 from backend.app.api.websocket import DEFAULT_POLL_INTERVAL
 from backend.app.api.websocket import router as websocket_router
 from backend.app.audio.devices import SoundDeviceBackend, enumerate_input_devices
@@ -93,7 +100,9 @@ def create_app(
         lambda: loopback_lister or _default_loopback_endpoints
     )
 
+    app.include_router(captions.router)
     app.include_router(catalog.router)
+    app.include_router(presets.router)
     app.include_router(settings.router)
     app.include_router(credentials.router)
     app.include_router(pipeline.router)

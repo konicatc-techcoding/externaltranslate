@@ -3,8 +3,10 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import Callable, Mapping
+from contextlib import suppress
 from copy import deepcopy
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Literal
 
 from backend.app.audio.capture import create_audio_source_from_settings
@@ -18,12 +20,20 @@ from backend.app.audio.sources.wasapi_loopback import (
 )
 from backend.app.captions.assembler import CaptionAssembler, CaptionEventSink
 from backend.app.captions.models import CaptionState
+from backend.app.captions.presets import CaptionPreset, PresetStore
 from backend.app.captions.store import CaptionStore
 from backend.app.config import (
+    CAPTION_FONTS,
+    CAPTION_SIZE_RANGE,
     CHARS_PER_LINE_RANGE,
+    HEX_COLOR,
     MAX_LINES_RANGE,
+    SCROLL_MS_RANGE,
+    ConfigurationError,
     caption_layout,
     caption_max_payload_length,
+    caption_style,
+    save_user_settings,
 )
 from backend.app.services.translation_pipeline import TranslationPipeline
 from backend.app.status.caption_status import publish_caption_status
@@ -73,6 +83,7 @@ class RuntimeSnapshot:
     last_error: str | None
     elapsed_seconds: float
     layout: tuple[int, int]
+    style: dict[str, Any]
 
 
 SourceFactory = Callable[[Mapping[str, Any]], AudioSource]
@@ -95,11 +106,17 @@ class PipelineRuntime:
         source_factory: SourceFactory = create_audio_source_from_settings,
         provider_factory: ProviderFactory = GeminiLiveProvider,
         pipeline_factory: PipelineFactory = TranslationPipeline,
+        preset_store: PresetStore | None = None,
+        user_settings_path: Path | None = None,
     ) -> None:
         self._settings: dict[str, Any] = deepcopy(dict(settings))
         self._source_factory = source_factory
         self._provider_factory = provider_factory
         self._pipeline_factory = pipeline_factory
+        self._user_settings_path = user_settings_path
+        self._preset_store = preset_store or PresetStore(
+            Path(__file__).resolve().parents[3] / "config" / "caption-presets.json"
+        )
 
         self._api_key: str | None = None
         self._status_store = StatusStore()
@@ -114,6 +131,7 @@ class PipelineRuntime:
         caption_settings = dict(self._settings.get("caption") or {})
         caption_settings["chars_per_line"] = chars_per_line
         caption_settings["max_lines"] = max_lines
+        caption_settings.update(caption_style(self._settings))
         self._settings["caption"] = caption_settings
         self._caption_assembler = CaptionAssembler(
             max_payload_length=caption_max_payload_length(self._settings),
@@ -242,6 +260,112 @@ class PipelineRuntime:
             chars_per_line=chars_per_line, max_lines=max_lines
         )
         self._caption_store.commit(state)
+        self._persist_caption_settings()
+
+    def update_caption_style(
+        self, *, font: str, size: int, scroll: bool, scroll_ms: int, color: str
+    ) -> None:
+        """Change overlay appearance, also allowed while running.
+
+        Appearance does not affect wrapping (the formatter counts columns),
+        so nothing is re-flowed and the caption revision stays put.
+        """
+        if font not in CAPTION_FONTS:
+            raise RuntimeSelectionError(
+                f"字型必須是 {'／'.join(CAPTION_FONTS)} 其中之一。"
+            )
+        if not CAPTION_SIZE_RANGE[0] <= size <= CAPTION_SIZE_RANGE[1]:
+            raise RuntimeSelectionError(
+                f"字級必須介於 {CAPTION_SIZE_RANGE[0]} 到 {CAPTION_SIZE_RANGE[1]} 之間。"
+            )
+        if not SCROLL_MS_RANGE[0] <= scroll_ms <= SCROLL_MS_RANGE[1]:
+            raise RuntimeSelectionError(
+                f"滑動時間必須介於 {SCROLL_MS_RANGE[0]} 到 {SCROLL_MS_RANGE[1]} 毫秒之間。"
+            )
+
+        if HEX_COLOR.fullmatch(color) is None:
+            raise RuntimeSelectionError("文字顏色必須是 #RRGGBB 格式。")
+
+        caption = dict(self._settings.get("caption") or {})
+        caption["color"] = color.upper()
+        caption["font"] = font
+        caption["size"] = size
+        caption["scroll"] = scroll
+        caption["scroll_ms"] = scroll_ms
+        self._settings["caption"] = caption
+        self._persist_caption_settings()
+
+    @property
+    def presets(self) -> PresetStore:
+        return self._preset_store
+
+    def current_preset(self, name: str) -> CaptionPreset:
+        """Capture the settings in force under ``name``."""
+        chars_per_line, max_lines = caption_layout(self._settings)
+        style = caption_style(self._settings)
+        return CaptionPreset(
+            name=name.strip(),
+            chars_per_line=chars_per_line,
+            max_lines=max_lines,
+            font=style["font"],
+            size=style["size"],
+            color=style["color"],
+            scroll=style["scroll"],
+            scroll_ms=style["scroll_ms"],
+        )
+
+    def apply_preset(self, preset: CaptionPreset) -> None:
+        """Apply a saved preset; allowed while translating, like its parts."""
+        self.update_caption_style(
+            font=preset.font,
+            size=preset.size,
+            scroll=preset.scroll,
+            scroll_ms=preset.scroll_ms,
+            color=preset.color,
+        )
+        self.update_caption_layout(
+            chars_per_line=preset.chars_per_line, max_lines=preset.max_lines
+        )
+
+    def _persist_caption_settings(self) -> None:
+        """Remember the caption display settings for the next start.
+
+        Written to the user settings file the loader already reads, so moving
+        a setup to another machine is a matter of copying that one file.
+        Persistence is a convenience: a failure here must not stop the
+        operator from adjusting captions mid-show.
+        """
+        path = self._user_settings_path
+        if path is None:
+            return
+        caption = dict(self._settings.get("caption") or {})
+        chars_per_line, max_lines = caption_layout(self._settings)
+        payload = {
+            "caption": {
+                "chars_per_line": chars_per_line,
+                "max_lines": max_lines,
+                **caption_style(self._settings),
+                "max_payload_length": caption.get("max_payload_length", 4096),
+            }
+        }
+        with suppress(ConfigurationError, OSError):
+            self._persist(path, payload)
+
+    @staticmethod
+    def _persist(path: Path, payload: dict[str, Any]) -> None:
+        save_user_settings(path, payload)
+
+    def clear_captions(self) -> None:
+        """Wipe the caption for the operator, mid-broadcast.
+
+        After a silent stretch the last caption keeps sitting on screen and
+        reads as if it were current; clearing it must not require stopping
+        translation. The revision advances so every overlay is pushed the
+        empty state.
+        """
+        state = self._caption_assembler.reset()
+        self._caption_store.commit(state)
+        publish_caption_status(self._status_publisher, state)
 
     # -------------------------------------------------------------- lifecycle
 
@@ -360,6 +484,7 @@ class PipelineRuntime:
         return RuntimeSnapshot(
             elapsed_seconds=self.elapsed_seconds,
             layout=caption_layout(self._settings),
+            style=caption_style(self._settings),
             running=self.running,
             status=self._status_store.snapshot(),
             caption=self._caption_store.snapshot(),

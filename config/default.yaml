@@ -12,6 +12,11 @@ caption:
   max_payload_length: 4096
   chars_per_line: 20
   max_lines: 2
+  font: jhenghei
+  size: 48
+  scroll: true
+  scroll_ms: 250
+  color: "#FFFFFF"
 
 audio:
   source_kind: input_device

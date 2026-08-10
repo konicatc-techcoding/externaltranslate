@@ -4,7 +4,13 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from backend.app.config import CHARS_PER_LINE_RANGE, MAX_LINES_RANGE
+from backend.app.config import (
+    CAPTION_SIZE_RANGE,
+    CHARS_PER_LINE_RANGE,
+    MAX_LINES_RANGE,
+    SCROLL_MS_RANGE,
+    CaptionFont,
+)
 
 
 class StrictModel(BaseModel):
@@ -60,6 +66,11 @@ class SettingsResponse(StrictModel):
     caption_max_payload_length: int
     caption_chars_per_line: int
     caption_max_lines: int
+    caption_font: str
+    caption_size: int
+    caption_scroll: bool
+    caption_scroll_ms: int
+    caption_color: str
     session_rotation_seconds: int
 
 
@@ -68,6 +79,16 @@ class CaptionLayoutUpdate(StrictModel):
 
     chars_per_line: int = Field(ge=CHARS_PER_LINE_RANGE[0], le=CHARS_PER_LINE_RANGE[1])
     max_lines: int = Field(ge=MAX_LINES_RANGE[0], le=MAX_LINES_RANGE[1])
+
+
+class CaptionStyleUpdate(StrictModel):
+    """Overlay appearance, adjustable while translating."""
+
+    font: CaptionFont
+    size: int = Field(ge=CAPTION_SIZE_RANGE[0], le=CAPTION_SIZE_RANGE[1])
+    scroll: bool
+    scroll_ms: int = Field(ge=SCROLL_MS_RANGE[0], le=SCROLL_MS_RANGE[1])
+    color: str = Field(pattern=r"^#[0-9A-Fa-f]{6}$")
 
 
 class SettingsUpdate(StrictModel):
@@ -138,17 +159,45 @@ class CaptionLayout(StrictModel):
     max_lines: int
 
 
+class CaptionStyle(StrictModel):
+    font: str
+    size: int
+    scroll: bool
+    scroll_ms: int
+    color: str
+
+
 class RuntimeStatusResponse(StrictModel):
     running: bool
     #: Sent with every snapshot so an overlay can size its box without a
     #: second request.
     layout: CaptionLayout
+    style: CaptionStyle
     elapsed_seconds: float
     status_revision: int
     components: list[ComponentStatusItem]
     caption: CaptionPayload
     meter: MeterPayload | None
     last_error: str | None
+
+
+class CaptionPresetItem(StrictModel):
+    name: str
+    chars_per_line: int
+    max_lines: int
+    font: str
+    size: int
+    color: str
+    scroll: bool
+    scroll_ms: int
+
+
+class CaptionPresetList(StrictModel):
+    presets: list[CaptionPresetItem]
+
+
+class CaptionPresetSave(StrictModel):
+    name: str = Field(min_length=1, max_length=60)
 
 
 class MessageResponse(StrictModel):

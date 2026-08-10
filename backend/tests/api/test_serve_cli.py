@@ -36,6 +36,17 @@ def test_serve_refuses_a_non_loopback_host() -> None:
     assert "127.0.0.1" in payload["message"]
 
 
+def test_serve_reads_and_writes_the_default_user_settings_file() -> None:
+    # Persistence is pointless unless the server loads the same file back on
+    # the next start.
+    captured: dict[str, Any] = {}
+    main([], emit=lambda _line: None, runner=lambda app, **kwargs: captured.update({"app": app}))
+
+    runtime = captured["app"].state.runtime
+    assert runtime._user_settings_path is not None
+    assert runtime._user_settings_path.name == "user.yaml"
+
+
 def test_serve_accepts_an_explicit_port() -> None:
     lines: list[str] = []
     main([], emit=lines.append, runner=lambda app, **kwargs: None)

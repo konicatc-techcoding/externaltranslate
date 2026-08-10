@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import suppress
+from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
@@ -14,18 +15,22 @@ router = APIRouter(tags=["websocket"])
 DEFAULT_POLL_INTERVAL = 0.1
 
 
-def _push_key(snapshot: RuntimeSnapshot) -> tuple[int, int, bool, str | None]:
+def _push_key(snapshot: RuntimeSnapshot) -> tuple[Any, ...]:
     """What counts as a change worth sending.
 
-    Caption revision alone is not enough: a session boundary that retains a
-    confirmed final deliberately keeps the revision and only moves
-    ``updated_at``, so status revision and running state are part of the key.
+    Everything the payload can show has to be in here. Caption revision alone
+    is not enough: a session boundary that retains a confirmed final keeps the
+    revision and only moves ``updated_at``, and an appearance change reflows
+    nothing at all — without layout and style in the key, changing the font
+    would never reach the pages showing it.
     """
     return (
         snapshot.caption.revision,
         snapshot.status.revision,
         snapshot.running,
         snapshot.last_error,
+        snapshot.layout,
+        tuple(sorted(snapshot.style.items())),
     )
 
 

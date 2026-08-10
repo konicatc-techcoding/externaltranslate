@@ -117,6 +117,11 @@ def test_settings_expose_only_non_secret_fields(client: TestClient) -> None:
         "caption_max_payload_length": 4096,
         "caption_chars_per_line": 20,
         "caption_max_lines": 2,
+        "caption_font": "jhenghei",
+        "caption_size": 48,
+        "caption_scroll": True,
+        "caption_scroll_ms": 250,
+        "caption_color": "#FFFFFF",
         "session_rotation_seconds": 480,
     }
     assert "api_key" not in str(body).lower()
@@ -161,6 +166,61 @@ def test_caption_layout_rejects_out_of_range_and_unknown_fields(
 
     # the rejected updates must leave the effective layout untouched
     assert client.get("/api/settings").json()["caption_chars_per_line"] == 20
+
+
+def test_caption_style_can_be_changed_through_the_api(client: TestClient) -> None:
+    response = client.put(
+        "/api/settings/caption-style",
+        json={
+            "font": "kai",
+            "size": 64,
+            "scroll": True,
+            "scroll_ms": 300,
+            "color": "#FFCC00",
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["caption_font"] == "kai"
+    assert body["caption_size"] == 64
+    assert body["caption_scroll"] is True
+    assert body["caption_scroll_ms"] == 300
+    assert body["caption_color"] == "#FFCC00"
+
+
+def test_caption_style_rejects_unknown_font_and_out_of_range(
+    client: TestClient,
+) -> None:
+    base = {"font": "kai", "size": 48, "scroll": False, "scroll_ms": 250, "color": "#FFFFFF"}
+    for payload in (
+        {**base, "font": "comic-sans"},
+        {**base, "size": 4},
+        {**base, "size": 9999},
+        {**base, "scroll_ms": 10},
+        {**base, "scroll_ms": 99999},
+        {**base, "color": "red"},
+        {**base, "color": "#FFF"},
+        {**base, "color": "#FFFFFF; background:url(x)"},
+        {**base, "bold": True},
+    ):
+        assert (
+            client.put("/api/settings/caption-style", json=payload).status_code == 422
+        )
+
+    settings = client.get("/api/settings").json()
+    assert settings["caption_font"] == "jhenghei"
+    assert settings["caption_size"] == 48
+
+
+def test_status_carries_the_caption_style(client: TestClient) -> None:
+    style = client.get("/api/pipeline/status").json()["style"]
+    assert style == {
+        "font": "jhenghei",
+        "size": 48,
+        "scroll": True,
+        "scroll_ms": 250,
+        "color": "#FFFFFF",
+    }
 
 
 def test_settings_update_rejects_unknown_fields(client: TestClient) -> None:

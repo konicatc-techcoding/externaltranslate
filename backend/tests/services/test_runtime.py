@@ -106,6 +106,7 @@ def _runtime(
     sources: list[FakeSource] | None = None,
     provider: FakeProvider | None = None,
     settings: Mapping[str, Any] | None = None,
+    user_settings_path: Any = None,
 ) -> tuple[PipelineRuntime, list[FakeSource], FakeProvider]:
     created: list[FakeSource] = sources if sources is not None else []
     used_provider = provider or FakeProvider()
@@ -123,6 +124,7 @@ def _runtime(
         settings or _SETTINGS,
         source_factory=source_factory,
         provider_factory=provider_factory,
+        user_settings_path=user_settings_path,
     )
     return runtime, created, used_provider
 
@@ -400,6 +402,111 @@ def test_audio_selection_update_enforces_source_exclusivity() -> None:
     assert audio["source_kind"] == "wasapi_loopback"
     assert audio["device_index"] is None
     assert audio["loopback_endpoint_index"] == 7
+
+
+def test_caption_settings_persist_for_the_next_start(tmp_path: Any) -> None:
+    # Restarting must not lose a caption the operator spent a show tuning.
+    user_settings = tmp_path / "user.yaml"
+    runtime, _created, _provider = _runtime(user_settings_path=user_settings)
+
+    runtime.update_caption_layout(chars_per_line=12, max_lines=4)
+    runtime.update_caption_style(
+        font="kai", size=64, scroll=False, scroll_ms=400, color="#FFCC00"
+    )
+
+    import yaml
+
+    stored = yaml.safe_load(user_settings.read_text(encoding="utf-8"))
+    assert stored["caption"]["chars_per_line"] == 12
+    assert stored["caption"]["max_lines"] == 4
+    assert stored["caption"]["font"] == "kai"
+    assert stored["caption"]["size"] == 64
+    assert stored["caption"]["color"] == "#FFCC00"
+    assert stored["caption"]["scroll"] is False
+    assert stored["caption"]["scroll_ms"] == 400
+
+
+def test_persistence_never_writes_the_api_key(tmp_path: Any) -> None:
+    user_settings = tmp_path / "user.yaml"
+    runtime, _created, _provider = _runtime(user_settings_path=user_settings)
+    runtime.set_api_key("AIzaSyFAKEKEY")
+
+    runtime.update_caption_layout(chars_per_line=12, max_lines=4)
+
+    assert "AIzaSyFAKEKEY" not in user_settings.read_text(encoding="utf-8")
+    assert "api_key" not in user_settings.read_text(encoding="utf-8")
+
+
+def test_audio_selection_is_not_persisted(tmp_path: Any) -> None:
+    # Device indexes mean different hardware on another machine, and change on
+    # replug even here; carrying them over would capture the wrong source.
+    user_settings = tmp_path / "user.yaml"
+    runtime, _created, _provider = _runtime(user_settings_path=user_settings)
+
+    runtime.update_audio_selection(
+        source_kind="input_device", device_index=7, endpoint_index=None, channel=1
+    )
+
+    assert not user_settings.exists()
+
+
+def test_a_failing_write_does_not_break_the_setting_change(tmp_path: Any) -> None:
+    # Persistence is a convenience; a read-only disk must not stop the
+    # operator from adjusting captions mid-show.
+    unwritable = tmp_path / "missing-dir" / "user.yaml"
+    runtime, _created, _provider = _runtime(user_settings_path=unwritable)
+    runtime._persist = _raise_os_error  # type: ignore[assignment]
+
+    runtime.update_caption_layout(chars_per_line=12, max_lines=4)
+
+    assert runtime.settings["caption"]["chars_per_line"] == 12
+
+
+def _raise_os_error(*_args: Any, **_kwargs: Any) -> None:
+    raise OSError("disk is read-only")
+
+
+def test_clear_captions_empties_the_display_while_running() -> None:
+    # Stale captions left on screen after a silent stretch mislead viewers;
+    # clearing must not require stopping translation.
+    async def scenario() -> None:
+        events = [
+            TranslationEvent(
+                kind=TranslationEventKind.OUTPUT_TRANSCRIPTION,
+                text="舊的字幕",
+                language_code="zh-Hant",
+                finished=False,
+            )
+        ]
+        runtime, _created, _provider = _runtime(provider=FakeProvider(events))
+        runtime.set_api_key("secret-api-key-value")
+        await runtime.start()
+        await _wait_until(lambda: runtime.snapshot().caption.text == "舊的字幕")
+
+        before = runtime.snapshot().caption
+        runtime.clear_captions()
+        after = runtime.snapshot().caption
+
+        assert after.text == ""
+        assert after.lines == ()
+        # the store rejects a revision that goes backwards, and the socket
+        # only pushes when it moves
+        assert after.revision > before.revision
+        assert runtime.running is True
+
+        sink = runtime.snapshot().status.by_component(Component.CAPTION_SINK)
+        assert sink is not None
+        assert sink.state is ComponentState.RESET
+
+        await runtime.stop()
+
+    asyncio.run(scenario())
+
+
+def test_clear_captions_before_any_caption_is_harmless() -> None:
+    runtime, _created, _provider = _runtime()
+    runtime.clear_captions()
+    assert runtime.snapshot().caption.text == ""
 
 
 def test_caption_layout_can_change_while_running() -> None:

@@ -4,7 +4,7 @@ import re
 from collections.abc import Mapping
 from copy import deepcopy
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, get_args
 
 import yaml
 
@@ -39,6 +39,11 @@ _CAPTION_KEYS = {
     "max_payload_length",
     "chars_per_line",
     "max_lines",
+    "font",
+    "size",
+    "scroll",
+    "scroll_ms",
+    "color",
 }
 
 # Display layout bounds; a caption narrower than 4 full-width characters or
@@ -47,6 +52,22 @@ CHARS_PER_LINE_RANGE = (4, 60)
 MAX_LINES_RANGE = (1, 10)
 DEFAULT_CHARS_PER_LINE = 20
 DEFAULT_MAX_LINES = 2
+
+# Font choices are a closed whitelist: the playout machine must have the font
+# installed or the browser silently falls back, which looks like the setting
+# was ignored. Noto Sans TC is not bundled with Windows.
+CaptionFont = Literal["jhenghei", "kai", "noto-sans-tc"]
+CAPTION_FONTS: tuple[str, ...] = get_args(CaptionFont)
+DEFAULT_CAPTION_FONT = "jhenghei"
+CAPTION_SIZE_RANGE = (12, 200)
+DEFAULT_CAPTION_SIZE = 48
+SCROLL_MS_RANGE = (120, 1000)
+DEFAULT_SCROLL_MS = 250
+DEFAULT_SCROLL = True
+# Strict #RRGGBB only: the value ends up in a CSS variable, and anything
+# looser turns a colour field into a style injection point.
+HEX_COLOR = re.compile(r"^#[0-9A-Fa-f]{6}$")
+DEFAULT_CAPTION_COLOR = "#FFFFFF"
 
 
 class ConfigurationError(ValueError):
@@ -70,6 +91,44 @@ def load_settings(
     _validate_gemini_settings(settings)
     _validate_caption_settings(settings)
     return settings
+
+
+def save_user_settings(path: Path, updates: Settings) -> None:
+    """Merge non-secret settings into the user settings file.
+
+    This is the same file the loader already reads at ``runtime > user >
+    default`` priority, so persistence needs no second mechanism — and moving
+    a setup to another machine is a matter of copying one file.
+
+    A file that fails to parse is left alone: overwriting it would destroy
+    settings the operator may still want to recover.
+    """
+    _reject_secret_fields(updates)
+
+    existing: Settings = {}
+    if path.exists():
+        try:
+            loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, yaml.YAMLError) as exc:
+            raise ConfigurationError(
+                f"使用者設定檔無法解析，已保留原檔不覆寫：{path}（{exc}）"
+            ) from None
+        if loaded is not None:
+            if not isinstance(loaded, dict):
+                raise ConfigurationError(f"使用者設定檔根節點必須是 mapping：{path}")
+            existing = {str(key): value for key, value in loaded.items()}
+
+    merged = _deep_merge(existing, updates)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".tmp")
+    try:
+        temporary.write_text(
+            yaml.safe_dump(merged, allow_unicode=True, sort_keys=True),
+            encoding="utf-8",
+        )
+        temporary.replace(path)
+    except OSError as exc:
+        raise ConfigurationError(f"無法寫入使用者設定檔：{exc}") from None
 
 
 def _read_yaml(path: Path, *, required: bool) -> Settings:
@@ -244,11 +303,57 @@ def _validate_caption_settings(settings: Settings) -> None:
             f"{MAX_LINES_RANGE[1]} 之間的整數。"
         )
 
+    _validate_caption_style(caption)
+
 
 def caption_max_payload_length(settings: Mapping[str, Any]) -> int:
     """Return the validated caption payload limit (defaults to 4096)."""
     caption = settings.get("caption") or {}
     return int(caption.get("max_payload_length", 4096))
+
+
+def _validate_caption_style(caption: Mapping[str, Any]) -> None:
+    if "font" in caption and caption.get("font") not in CAPTION_FONTS:
+        raise ConfigurationError(
+            f"caption.font 必須是 {'／'.join(CAPTION_FONTS)} 其中之一。"
+        )
+    if "size" in caption and not _is_bounded_int(
+        caption.get("size"),
+        minimum=CAPTION_SIZE_RANGE[0],
+        maximum=CAPTION_SIZE_RANGE[1],
+    ):
+        raise ConfigurationError(
+            f"caption.size 必須是 {CAPTION_SIZE_RANGE[0]} 到 "
+            f"{CAPTION_SIZE_RANGE[1]} 之間的整數。"
+        )
+    if "scroll" in caption and not isinstance(caption.get("scroll"), bool):
+        raise ConfigurationError("caption.scroll 必須是 boolean。")
+    if "color" in caption and (
+        not isinstance(caption.get("color"), str)
+        or HEX_COLOR.fullmatch(str(caption.get("color"))) is None
+    ):
+        raise ConfigurationError("caption.color 必須是 #RRGGBB 格式。")
+    if "scroll_ms" in caption and not _is_bounded_int(
+        caption.get("scroll_ms"),
+        minimum=SCROLL_MS_RANGE[0],
+        maximum=SCROLL_MS_RANGE[1],
+    ):
+        raise ConfigurationError(
+            f"caption.scroll_ms 必須是 {SCROLL_MS_RANGE[0]} 到 "
+            f"{SCROLL_MS_RANGE[1]} 之間的整數。"
+        )
+
+
+def caption_style(settings: Mapping[str, Any]) -> dict[str, Any]:
+    """Return the validated overlay appearance settings."""
+    caption = settings.get("caption") or {}
+    return {
+        "font": caption.get("font", DEFAULT_CAPTION_FONT),
+        "size": int(caption.get("size", DEFAULT_CAPTION_SIZE)),
+        "scroll": bool(caption.get("scroll", DEFAULT_SCROLL)),
+        "scroll_ms": int(caption.get("scroll_ms", DEFAULT_SCROLL_MS)),
+        "color": str(caption.get("color", DEFAULT_CAPTION_COLOR)).upper(),
+    }
 
 
 def caption_layout(settings: Mapping[str, Any]) -> tuple[int, int]:

@@ -88,6 +88,28 @@ def test_socket_reports_running_state_transitions() -> None:
     assert running_seen is True
 
 
+def test_appearance_and_layout_changes_are_pushed() -> None:
+    # Appearance deliberately does not touch the caption revision (it does not
+    # reflow anything), so unless the push key covers it the control page and
+    # every overlay would keep showing the old style. Asserted on the key
+    # rather than through the socket: a missing push blocks receive_json()
+    # forever instead of failing.
+    from backend.app.api.websocket import _push_key
+
+    for client in make_client():
+        runtime = client.app.state.runtime  # type: ignore[attr-defined]
+
+        before = _push_key(runtime.snapshot())
+        runtime.update_caption_style(
+            font="kai", size=72, scroll=False, scroll_ms=400, color="#FF0000"
+        )
+        after_style = _push_key(runtime.snapshot())
+        assert after_style != before
+
+        runtime.update_caption_layout(chars_per_line=8, max_lines=3)
+        assert _push_key(runtime.snapshot()) != after_style
+
+
 def test_only_loopback_origins_may_connect() -> None:
     for client in make_client():
         for origin in ("http://localhost:5173", "http://127.0.0.1:8765"):

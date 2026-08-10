@@ -3,6 +3,7 @@ from __future__ import annotations
 from backend.app.api.models import (
     CaptionLayout,
     CaptionPayload,
+    CaptionStyle,
     ComponentStatusItem,
     MeterPayload,
     RuntimeStatusResponse,
@@ -24,6 +25,7 @@ def runtime_status_response(snapshot: RuntimeSnapshot) -> RuntimeStatusResponse:
         layout=CaptionLayout(
             chars_per_line=snapshot.layout[0], max_lines=snapshot.layout[1]
         ),
+        style=CaptionStyle(**snapshot.style),
         elapsed_seconds=snapshot.elapsed_seconds,
         status_revision=snapshot.status.revision,
         components=[

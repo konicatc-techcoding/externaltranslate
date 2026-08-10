@@ -177,6 +177,26 @@ def test_settings_cannot_change_while_running(client: TestClient) -> None:
     client.post("/api/pipeline/stop")
 
 
+def test_captions_can_be_cleared_through_the_api(client: TestClient) -> None:
+    response = client.post("/api/captions/clear")
+    assert response.status_code == 200
+    assert response.json()["message"]
+
+    caption = client.get("/api/pipeline/status").json()["caption"]
+    assert caption["text"] == ""
+    assert caption["lines"] == []
+
+
+def test_clearing_captions_is_allowed_while_running(client: TestClient) -> None:
+    client.put("/api/credentials", json={"api_key": _KEY})
+    client.post("/api/pipeline/start")
+
+    assert client.post("/api/captions/clear").status_code == 200
+    assert client.get("/api/pipeline/status").json()["running"] is True
+
+    client.post("/api/pipeline/stop")
+
+
 def test_start_reports_why_the_audio_source_could_not_be_built() -> None:
     from backend.app.audio.devices import AudioDeviceError
 
