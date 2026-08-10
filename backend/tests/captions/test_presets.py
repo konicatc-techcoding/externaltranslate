@@ -125,3 +125,36 @@ def test_saving_never_writes_a_secret_looking_field(store: PresetStore) -> None:
     written = store.path.read_text(encoding="utf-8").lower()
     for secret in ("api_key", "apikey", "token", "secret", "password"):
         assert secret not in written
+
+
+def test_a_preset_saved_before_the_new_fields_existed_still_loads(
+    tmp_path: Path,
+) -> None:
+    # Presets are the operator's saved show setups. Adding an appearance field
+    # must not make yesterday's file unreadable and silently empty the list.
+    path = tmp_path / "caption-presets.json"
+    path.write_text(
+        json.dumps(
+            {
+                "記者會": {
+                    "name": "記者會",
+                    "chars_per_line": 10,
+                    "max_lines": 3,
+                    "font": "kai",
+                    "size": 72,
+                    "color": "#FFCC00",
+                    "scroll": False,
+                    "scroll_ms": 400,
+                }
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    preset = PresetStore(path).get("記者會")
+
+    assert preset.size == 72
+    # The fields it predates come back as the shipped defaults.
+    assert preset.outline_width == 0
+    assert preset.align == "left"

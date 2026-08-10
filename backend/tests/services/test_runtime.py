@@ -415,7 +415,15 @@ def test_caption_settings_persist_for_the_next_start(tmp_path: Any) -> None:
 
     runtime.update_caption_layout(chars_per_line=12, max_lines=4)
     runtime.update_caption_style(
-        font="kai", size=64, scroll=False, scroll_ms=400, color="#FFCC00"
+        {
+            "font": "kai",
+            "size": 64,
+            "scroll": False,
+            "scroll_ms": 400,
+            "color": "#FFCC00",
+            "outline_width": 4,
+            "align": "center",
+        }
     )
 
     import yaml
@@ -428,6 +436,8 @@ def test_caption_settings_persist_for_the_next_start(tmp_path: Any) -> None:
     assert stored["caption"]["color"] == "#FFCC00"
     assert stored["caption"]["scroll"] is False
     assert stored["caption"]["scroll_ms"] == 400
+    assert stored["caption"]["outline_width"] == 4
+    assert stored["caption"]["align"] == "center"
 
 
 def test_persistence_never_writes_the_api_key(tmp_path: Any) -> None:

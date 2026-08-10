@@ -9,7 +9,28 @@ from fastapi.testclient import TestClient
 
 from backend.app.api.app import create_app
 from backend.app.captions.presets import PresetStore
+from backend.app.config import caption_style
 from backend.app.services.runtime import PipelineRuntime
+
+# A style with every field moved off its default, so "the preset restored
+# everything" cannot pass by accident.
+SHOW_STYLE: dict[str, Any] = {
+    **caption_style({}),
+    "font": "kai",
+    "size": 72,
+    "weight": "bold",
+    "color": "#FFCC00",
+    "outline_width": 5,
+    "outline_color": "#101010",
+    "shadow": True,
+    "background_color": "#202020",
+    "background_opacity": 0,
+    "padding": 30,
+    "radius": 20,
+    "align": "center",
+    "scroll": False,
+    "scroll_ms": 400,
+}
 
 _SETTINGS: dict[str, Any] = {
     "audio": {
@@ -50,16 +71,7 @@ def test_saving_captures_the_settings_in_force(client: TestClient) -> None:
     client.put(
         "/api/settings/caption-layout", json={"chars_per_line": 10, "max_lines": 3}
     )
-    client.put(
-        "/api/settings/caption-style",
-        json={
-            "font": "kai",
-            "size": 72,
-            "scroll": False,
-            "scroll_ms": 400,
-            "color": "#FFCC00",
-        },
-    )
+    client.put("/api/settings/caption-style", json=SHOW_STYLE)
 
     response = client.put("/api/caption-presets", json={"name": "記者會"})
     assert response.status_code == 200
@@ -68,11 +80,7 @@ def test_saving_captures_the_settings_in_force(client: TestClient) -> None:
         "name": "記者會",
         "chars_per_line": 10,
         "max_lines": 3,
-        "font": "kai",
-        "size": 72,
-        "color": "#FFCC00",
-        "scroll": False,
-        "scroll_ms": 400,
+        **SHOW_STYLE,
     }
 
 
@@ -80,43 +88,22 @@ def test_applying_a_preset_restores_every_setting(client: TestClient) -> None:
     client.put(
         "/api/settings/caption-layout", json={"chars_per_line": 10, "max_lines": 3}
     )
-    client.put(
-        "/api/settings/caption-style",
-        json={
-            "font": "kai",
-            "size": 72,
-            "scroll": False,
-            "scroll_ms": 400,
-            "color": "#FFCC00",
-        },
-    )
+    client.put("/api/settings/caption-style", json=SHOW_STYLE)
     client.put("/api/caption-presets", json={"name": "記者會"})
 
     # move everything away from the saved values
     client.put(
         "/api/settings/caption-layout", json={"chars_per_line": 30, "max_lines": 1}
     )
-    client.put(
-        "/api/settings/caption-style",
-        json={
-            "font": "jhenghei",
-            "size": 20,
-            "scroll": True,
-            "scroll_ms": 200,
-            "color": "#00FF00",
-        },
-    )
+    client.put("/api/settings/caption-style", json=caption_style({}))
 
     assert client.post("/api/caption-presets/記者會/apply").status_code == 200
 
     settings = client.get("/api/settings").json()
     assert settings["caption_chars_per_line"] == 10
     assert settings["caption_max_lines"] == 3
-    assert settings["caption_font"] == "kai"
-    assert settings["caption_size"] == 72
-    assert settings["caption_color"] == "#FFCC00"
-    assert settings["caption_scroll"] is False
-    assert settings["caption_scroll_ms"] == 400
+    # Every appearance field comes back, not just the ones that existed first.
+    assert settings["caption_style"] == SHOW_STYLE
 
 
 def test_deleting_a_preset(client: TestClient) -> None:

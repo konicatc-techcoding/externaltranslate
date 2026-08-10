@@ -28,12 +28,9 @@ from backend.app.captions.models import CaptionState
 from backend.app.captions.presets import CaptionPreset, PresetStore
 from backend.app.captions.store import CaptionStore
 from backend.app.config import (
-    CAPTION_FONTS,
-    CAPTION_SIZE_RANGE,
+    CAPTION_STYLE_FIELDS,
     CHARS_PER_LINE_RANGE,
-    HEX_COLOR,
     MAX_LINES_RANGE,
-    SCROLL_MS_RANGE,
     ConfigurationError,
     caption_layout,
     caption_max_payload_length,
@@ -386,36 +383,28 @@ class PipelineRuntime:
         self._caption_store.commit(state)
         self._persist_caption_settings()
 
-    def update_caption_style(
-        self, *, font: str, size: int, scroll: bool, scroll_ms: int, color: str
-    ) -> None:
+    def update_caption_style(self, style: Mapping[str, Any]) -> None:
         """Change overlay appearance, also allowed while running.
 
         Appearance does not affect wrapping (the formatter counts columns),
-        so nothing is re-flowed and the caption revision stays put.
+        so nothing is re-flowed and the caption revision stays put. Validation
+        walks the config spec rather than a hand-written list of checks: a new
+        appearance field is then impossible to add without validating it.
         """
-        if font not in CAPTION_FONTS:
-            raise RuntimeSelectionError(
-                f"字型必須是 {'／'.join(CAPTION_FONTS)} 其中之一。"
-            )
-        if not CAPTION_SIZE_RANGE[0] <= size <= CAPTION_SIZE_RANGE[1]:
-            raise RuntimeSelectionError(
-                f"字級必須介於 {CAPTION_SIZE_RANGE[0]} 到 {CAPTION_SIZE_RANGE[1]} 之間。"
-            )
-        if not SCROLL_MS_RANGE[0] <= scroll_ms <= SCROLL_MS_RANGE[1]:
-            raise RuntimeSelectionError(
-                f"滑動時間必須介於 {SCROLL_MS_RANGE[0]} 到 {SCROLL_MS_RANGE[1]} 毫秒之間。"
-            )
-
-        if HEX_COLOR.fullmatch(color) is None:
-            raise RuntimeSelectionError("文字顏色必須是 #RRGGBB 格式。")
+        unknown = set(style) - {field.name for field in CAPTION_STYLE_FIELDS}
+        if unknown:
+            raise RuntimeSelectionError(f"不支援的字幕樣式欄位：{min(unknown)}。")
 
         caption = dict(self._settings.get("caption") or {})
-        caption["color"] = color.upper()
-        caption["font"] = font
-        caption["size"] = size
-        caption["scroll"] = scroll
-        caption["scroll_ms"] = scroll_ms
+        for field in CAPTION_STYLE_FIELDS:
+            if field.name not in style:
+                continue
+            value = style[field.name]
+            if not field.check(value):
+                raise RuntimeSelectionError(field.error.replace("caption.", ""))
+            caption[field.name] = (
+                value.upper() if field.name.endswith("color") else value
+            )
         self._settings["caption"] = caption
         self._persist_caption_settings()
 
@@ -426,26 +415,20 @@ class PipelineRuntime:
     def current_preset(self, name: str) -> CaptionPreset:
         """Capture the settings in force under ``name``."""
         chars_per_line, max_lines = caption_layout(self._settings)
-        style = caption_style(self._settings)
         return CaptionPreset(
             name=name.strip(),
             chars_per_line=chars_per_line,
             max_lines=max_lines,
-            font=style["font"],
-            size=style["size"],
-            color=style["color"],
-            scroll=style["scroll"],
-            scroll_ms=style["scroll_ms"],
+            **caption_style(self._settings),
         )
 
     def apply_preset(self, preset: CaptionPreset) -> None:
         """Apply a saved preset; allowed while translating, like its parts."""
         self.update_caption_style(
-            font=preset.font,
-            size=preset.size,
-            scroll=preset.scroll,
-            scroll_ms=preset.scroll_ms,
-            color=preset.color,
+            {
+                field.name: getattr(preset, field.name)
+                for field in CAPTION_STYLE_FIELDS
+            }
         )
         self.update_caption_layout(
             chars_per_line=preset.chars_per_line, max_lines=preset.max_lines

@@ -6,12 +6,9 @@ from pathlib import Path
 from typing import Any
 
 from backend.app.config import (
-    CAPTION_FONTS,
-    CAPTION_SIZE_RANGE,
+    CAPTION_STYLE_FIELDS,
     CHARS_PER_LINE_RANGE,
-    HEX_COLOR,
     MAX_LINES_RANGE,
-    SCROLL_MS_RANGE,
 )
 
 MAX_NAME_LENGTH = 60
@@ -28,6 +25,10 @@ class CaptionPreset:
 
     Only non-secret display settings live here; nothing in this shape can
     carry a credential.
+
+    Every appearance field has a default so a preset saved before that field
+    existed still loads. Without this, adding a field would make the operator's
+    saved presets fail to construct and silently disappear from the list.
     """
 
     name: str
@@ -38,6 +39,15 @@ class CaptionPreset:
     color: str
     scroll: bool
     scroll_ms: int
+    weight: str = "normal"
+    outline_width: int = 0
+    outline_color: str = "#000000"
+    shadow: bool = False
+    background_color: str = "#000000"
+    background_opacity: float = 0.5
+    padding: int = 12
+    radius: int = 8
+    align: str = "left"
 
 
 def _validate(preset: CaptionPreset) -> None:
@@ -50,16 +60,12 @@ def _validate(preset: CaptionPreset) -> None:
         raise PresetError("每行字數超出允許範圍。")
     if not _in_range(preset.max_lines, MAX_LINES_RANGE):
         raise PresetError("行數超出允許範圍。")
-    if not _in_range(preset.size, CAPTION_SIZE_RANGE):
-        raise PresetError("字級超出允許範圍。")
-    if not _in_range(preset.scroll_ms, SCROLL_MS_RANGE):
-        raise PresetError("滑動時間超出允許範圍。")
-    if preset.font not in CAPTION_FONTS:
-        raise PresetError("字型不在允許清單內。")
-    if not isinstance(preset.color, str) or HEX_COLOR.fullmatch(preset.color) is None:
-        raise PresetError("文字顏色必須是 #RRGGBB 格式。")
-    if not isinstance(preset.scroll, bool):
-        raise PresetError("滑動設定必須是 boolean。")
+    # Appearance is checked against the same spec the settings API uses, so a
+    # preset can never carry a value the runtime would refuse to apply.
+    for field in CAPTION_STYLE_FIELDS:
+        value = getattr(preset, field.name)
+        if not field.check(value):
+            raise PresetError(field.error.replace("caption.", "字幕設定 "))
 
 
 def _in_range(value: Any, bounds: tuple[int, int]) -> bool:

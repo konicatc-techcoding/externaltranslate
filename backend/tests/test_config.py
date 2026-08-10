@@ -423,3 +423,79 @@ def test_load_settings_rejects_an_endpoint_name_for_an_input_device(
             default_path=default_path,
             runtime_overrides={"audio": {"loopback_endpoint_name": "HDMI"}},
         )
+
+
+def test_caption_style_defaults_cover_every_field() -> None:
+    from backend.app.config import CAPTION_STYLE_FIELDS, caption_style
+
+    style = caption_style({})
+
+    assert set(style) == {field.name for field in CAPTION_STYLE_FIELDS}
+    # Defaults keep the appearance the overlay already had.
+    assert style["outline_width"] == 0
+    assert style["shadow"] is False
+    assert style["background_opacity"] == 0.5
+    assert style["align"] == "left"
+    assert style["weight"] == "normal"
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid_value"),
+    [
+        ("weight", "heavy"),
+        ("outline_width", -1),
+        ("outline_width", 9),
+        ("outline_width", True),
+        ("outline_color", "black"),
+        ("shadow", "yes"),
+        ("background_color", "#GGGGGG"),
+        ("background_opacity", 1.5),
+        ("background_opacity", -0.1),
+        ("background_opacity", True),
+        ("padding", 65),
+        ("radius", -1),
+        ("align", "justify"),
+    ],
+)
+def test_load_settings_rejects_invalid_caption_style(
+    tmp_path: Path, field: str, invalid_value: object
+) -> None:
+    default_path = tmp_path / "default.yaml"
+    default_path.write_text("caption:\n  max_payload_length: 4096\n", encoding="utf-8")
+
+    with pytest.raises(ConfigurationError, match=field):
+        load_settings(
+            default_path=default_path,
+            runtime_overrides={"caption": {field: invalid_value}},
+        )
+
+
+def test_caption_style_accepts_a_whole_valid_set(tmp_path: Path) -> None:
+    default_path = tmp_path / "default.yaml"
+    default_path.write_text("caption:\n  max_payload_length: 4096\n", encoding="utf-8")
+
+    settings = load_settings(
+        default_path=default_path,
+        runtime_overrides={
+            "caption": {
+                "weight": "bold",
+                "outline_width": 4,
+                "outline_color": "#101010",
+                "shadow": True,
+                "background_color": "#202020",
+                "background_opacity": 0,
+                "padding": 24,
+                "radius": 0,
+                "align": "center",
+            }
+        },
+    )
+
+    from backend.app.config import caption_style
+
+    style = caption_style(settings)
+    assert style["weight"] == "bold"
+    assert style["outline_width"] == 4
+    # An integer 0 is a valid opacity, and must not be rejected as "not a float".
+    assert style["background_opacity"] == 0
+    assert style["outline_color"] == "#101010"

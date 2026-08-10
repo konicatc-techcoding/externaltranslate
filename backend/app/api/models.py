@@ -5,11 +5,8 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from backend.app.config import (
-    CAPTION_SIZE_RANGE,
     CHARS_PER_LINE_RANGE,
     MAX_LINES_RANGE,
-    SCROLL_MS_RANGE,
-    CaptionFont,
 )
 
 
@@ -58,6 +55,30 @@ class LoopbackEndpointResponse(StrictModel):
     endpoints: list[LoopbackEndpointItem]
 
 
+class CaptionStyle(StrictModel):
+    """Overlay appearance, mirroring `CAPTION_STYLE_FIELDS` in the config.
+
+    Bounds are not repeated here. The runtime validates against that one spec
+    table and the route maps the failure to 422, so a field cannot end up
+    accepted by the model and rejected by the runtime — or worse, the reverse.
+    """
+
+    font: str
+    size: int
+    weight: str
+    color: str
+    outline_width: int
+    outline_color: str
+    shadow: bool
+    background_color: str
+    background_opacity: float
+    padding: int
+    radius: int
+    align: str
+    scroll: bool
+    scroll_ms: int
+
+
 class SettingsResponse(StrictModel):
     source_kind: str
     device_index: int | None
@@ -66,11 +87,7 @@ class SettingsResponse(StrictModel):
     caption_max_payload_length: int
     caption_chars_per_line: int
     caption_max_lines: int
-    caption_font: str
-    caption_size: int
-    caption_scroll: bool
-    caption_scroll_ms: int
-    caption_color: str
+    caption_style: CaptionStyle
     session_rotation_seconds: int
 
 
@@ -81,14 +98,8 @@ class CaptionLayoutUpdate(StrictModel):
     max_lines: int = Field(ge=MAX_LINES_RANGE[0], le=MAX_LINES_RANGE[1])
 
 
-class CaptionStyleUpdate(StrictModel):
+class CaptionStyleUpdate(CaptionStyle):
     """Overlay appearance, adjustable while translating."""
-
-    font: CaptionFont
-    size: int = Field(ge=CAPTION_SIZE_RANGE[0], le=CAPTION_SIZE_RANGE[1])
-    scroll: bool
-    scroll_ms: int = Field(ge=SCROLL_MS_RANGE[0], le=SCROLL_MS_RANGE[1])
-    color: str = Field(pattern=r"^#[0-9A-Fa-f]{6}$")
 
 
 class SettingsUpdate(StrictModel):
@@ -159,14 +170,6 @@ class CaptionLayout(StrictModel):
     max_lines: int
 
 
-class CaptionStyle(StrictModel):
-    font: str
-    size: int
-    scroll: bool
-    scroll_ms: int
-    color: str
-
-
 class RuntimeStatusResponse(StrictModel):
     running: bool
     #: Sent with every snapshot so an overlay can size its box without a
@@ -185,15 +188,10 @@ class RuntimeStatusResponse(StrictModel):
     audio_notice: str | None = None
 
 
-class CaptionPresetItem(StrictModel):
+class CaptionPresetItem(CaptionStyle):
     name: str
     chars_per_line: int
     max_lines: int
-    font: str
-    size: int
-    color: str
-    scroll: bool
-    scroll_ms: int
 
 
 class CaptionPresetList(StrictModel):

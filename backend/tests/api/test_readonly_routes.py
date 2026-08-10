@@ -9,8 +9,13 @@ from fastapi.testclient import TestClient
 from backend.app.api.app import create_app
 from backend.app.api.dependencies import get_runtime
 from backend.app.audio.models import AudioDeviceInfo, LoopbackEndpointInfo
+from backend.app.config import caption_style
 from backend.app.prerequisites.models import PrerequisiteResult, PrerequisiteStatus
 from backend.app.services.runtime import PipelineRuntime
+
+# The shipped defaults, read from the one spec table rather than restated here:
+# a copy would keep passing after a default changed underneath it.
+DEFAULT_STYLE = caption_style({})
 
 _SETTINGS: dict[str, Any] = {
     "audio": {
@@ -120,11 +125,7 @@ def test_settings_expose_only_non_secret_fields(client: TestClient) -> None:
         "caption_max_payload_length": 4096,
         "caption_chars_per_line": 20,
         "caption_max_lines": 2,
-        "caption_font": "jhenghei",
-        "caption_size": 48,
-        "caption_scroll": True,
-        "caption_scroll_ms": 250,
-        "caption_color": "#FFFFFF",
+        "caption_style": DEFAULT_STYLE,
         "session_rotation_seconds": 480,
     }
     assert "api_key" not in str(body).lower()
@@ -175,26 +176,37 @@ def test_caption_style_can_be_changed_through_the_api(client: TestClient) -> Non
     response = client.put(
         "/api/settings/caption-style",
         json={
+            **DEFAULT_STYLE,
             "font": "kai",
             "size": 64,
-            "scroll": True,
-            "scroll_ms": 300,
             "color": "#FFCC00",
+            "weight": "bold",
+            "outline_width": 4,
+            "outline_color": "#101010",
+            "shadow": True,
+            "background_opacity": 0,
+            "padding": 24,
+            "radius": 0,
+            "align": "center",
         },
     )
     assert response.status_code == 200
-    body = response.json()
-    assert body["caption_font"] == "kai"
-    assert body["caption_size"] == 64
-    assert body["caption_scroll"] is True
-    assert body["caption_scroll_ms"] == 300
-    assert body["caption_color"] == "#FFCC00"
+    style = response.json()["caption_style"]
+    assert style["font"] == "kai"
+    assert style["size"] == 64
+    assert style["color"] == "#FFCC00"
+    # The outline is what makes captions readable over bright video.
+    assert style["outline_width"] == 4
+    assert style["outline_color"] == "#101010"
+    assert style["shadow"] is True
+    assert style["background_opacity"] == 0
+    assert style["align"] == "center"
 
 
 def test_caption_style_rejects_unknown_font_and_out_of_range(
     client: TestClient,
 ) -> None:
-    base = {"font": "kai", "size": 48, "scroll": False, "scroll_ms": 250, "color": "#FFFFFF"}
+    base = dict(DEFAULT_STYLE)
     for payload in (
         {**base, "font": "comic-sans"},
         {**base, "size": 4},
@@ -204,26 +216,24 @@ def test_caption_style_rejects_unknown_font_and_out_of_range(
         {**base, "color": "red"},
         {**base, "color": "#FFF"},
         {**base, "color": "#FFFFFF; background:url(x)"},
+        {**base, "weight": "heavy"},
+        {**base, "outline_width": 99},
+        {**base, "outline_color": "black"},
+        {**base, "background_opacity": 2},
+        {**base, "padding": -1},
+        {**base, "radius": 999},
+        {**base, "align": "justify"},
         {**base, "bold": True},
     ):
         assert (
             client.put("/api/settings/caption-style", json=payload).status_code == 422
-        )
+        ), payload
 
-    settings = client.get("/api/settings").json()
-    assert settings["caption_font"] == "jhenghei"
-    assert settings["caption_size"] == 48
+    assert client.get("/api/settings").json()["caption_style"] == DEFAULT_STYLE
 
 
 def test_status_carries_the_caption_style(client: TestClient) -> None:
-    style = client.get("/api/pipeline/status").json()["style"]
-    assert style == {
-        "font": "jhenghei",
-        "size": 48,
-        "scroll": True,
-        "scroll_ms": 250,
-        "color": "#FFFFFF",
-    }
+    assert client.get("/api/pipeline/status").json()["style"] == DEFAULT_STYLE
 
 
 def test_settings_update_rejects_unknown_fields(client: TestClient) -> None:

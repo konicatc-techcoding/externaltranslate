@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import pytest
 import yaml
 
 from backend.app.audio.devices import AudioDeviceError
@@ -227,3 +228,26 @@ def _deep_copy_with_identity(**identity: Any) -> dict[str, Any]:
     settings = {key: dict(value) for key, value in _SETTINGS.items()}
     settings["audio"].update(identity)
     return settings
+
+
+def test_an_unknown_style_field_is_refused(tmp_path: Path) -> None:
+    # A typo in a field name must fail loudly rather than be stored and never
+    # rendered.
+    from backend.app.services.runtime import RuntimeSelectionError
+
+    runtime, _user_settings = build(tmp_path)
+
+    with pytest.raises(RuntimeSelectionError, match="outline"):
+        runtime.update_caption_style({"outlinewidth": 4})
+
+
+def test_a_partial_style_update_leaves_the_other_fields_alone(tmp_path: Path) -> None:
+    runtime, _user_settings = build(tmp_path)
+    runtime.update_caption_style({"size": 72, "outline_width": 3})
+
+    runtime.update_caption_style({"align": "center"})
+
+    style = runtime.snapshot().style
+    assert style["align"] == "center"
+    assert style["size"] == 72
+    assert style["outline_width"] == 3

@@ -14,9 +14,19 @@ caption:
   max_lines: 2
   font: jhenghei
   size: 48
+  weight: normal
+  color: "#FFFFFF"
+  # Outline off by default; turn it on when captions sit over bright video.
+  outline_width: 0
+  outline_color: "#000000"
+  shadow: false
+  background_color: "#000000"
+  background_opacity: 0.5
+  padding: 12
+  radius: 8
+  align: left
   scroll: true
   scroll_ms: 250
-  color: "#FFFFFF"
 
 audio:
   source_kind: input_device

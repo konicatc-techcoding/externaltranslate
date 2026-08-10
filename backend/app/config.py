@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from copy import deepcopy
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, get_args
 
@@ -38,16 +39,7 @@ _GEMINI_KEYS = {
     "echo_target_language",
     "session_rotation_seconds",
 }
-_CAPTION_KEYS = {
-    "max_payload_length",
-    "chars_per_line",
-    "max_lines",
-    "font",
-    "size",
-    "scroll",
-    "scroll_ms",
-    "color",
-}
+_CAPTION_LAYOUT_KEYS = {"max_payload_length", "chars_per_line", "max_lines"}
 
 # Display layout bounds; a caption narrower than 4 full-width characters or
 # taller than 10 lines is not a caption any consumer can use.
@@ -71,6 +63,148 @@ DEFAULT_SCROLL = True
 # looser turns a colour field into a style injection point.
 HEX_COLOR = re.compile(r"^#[0-9A-Fa-f]{6}$")
 DEFAULT_CAPTION_COLOR = "#FFFFFF"
+
+CAPTION_ALIGNMENTS: tuple[str, ...] = ("left", "center", "right")
+CAPTION_WEIGHTS: tuple[str, ...] = ("normal", "bold")
+OUTLINE_WIDTH_RANGE = (0, 8)
+PADDING_RANGE = (0, 64)
+RADIUS_RANGE = (0, 48)
+
+
+@dataclass(frozen=True)
+class CaptionStyleField:
+    """One appearance setting: its default, its check and its message.
+
+    Appearance grew from three fields to twelve, and repeating the same
+    validate-here / default-there / copy-into-the-model dance for each one is
+    how a field ends up accepted by the API but silently ignored. Everything
+    that needs the list reads it from here.
+    """
+
+    name: str
+    default: Any
+    check: Callable[[Any], bool]
+    error: str
+
+
+def _is_bool(value: Any) -> bool:
+    return isinstance(value, bool)
+
+
+def _is_hex_color(value: Any) -> bool:
+    return isinstance(value, str) and HEX_COLOR.fullmatch(value) is not None
+
+
+def _is_ratio(value: Any) -> bool:
+    # `0` and `1` arrive as ints from YAML and JSON; both are valid opacities.
+    return isinstance(value, int | float) and not isinstance(value, bool) and (
+        0.0 <= float(value) <= 1.0
+    )
+
+
+def _bounded(bounds: tuple[int, int]) -> Callable[[Any], bool]:
+    def check(value: Any) -> bool:
+        return _is_bounded_int(value, minimum=bounds[0], maximum=bounds[1])
+
+    return check
+
+
+def _one_of(allowed: tuple[str, ...]) -> Callable[[Any], bool]:
+    def check(value: Any) -> bool:
+        return value in allowed
+
+    return check
+
+
+CAPTION_STYLE_FIELDS: tuple[CaptionStyleField, ...] = (
+    CaptionStyleField(
+        "font",
+        DEFAULT_CAPTION_FONT,
+        _one_of(CAPTION_FONTS),
+        f"caption.font 必須是 {'／'.join(CAPTION_FONTS)} 其中之一。",
+    ),
+    CaptionStyleField(
+        "size",
+        DEFAULT_CAPTION_SIZE,
+        _bounded(CAPTION_SIZE_RANGE),
+        f"caption.size 必須是 {CAPTION_SIZE_RANGE[0]} 到 {CAPTION_SIZE_RANGE[1]} 之間的整數。",
+    ),
+    CaptionStyleField(
+        "weight",
+        "normal",
+        _one_of(CAPTION_WEIGHTS),
+        "caption.weight 必須是 normal 或 bold。",
+    ),
+    CaptionStyleField(
+        "color", DEFAULT_CAPTION_COLOR, _is_hex_color, "caption.color 必須是 #RRGGBB 格式。"
+    ),
+    # Off by default: an outline appearing on its own would change how every
+    # existing overlay looks after an upgrade.
+    CaptionStyleField(
+        "outline_width",
+        0,
+        _bounded(OUTLINE_WIDTH_RANGE),
+        f"caption.outline_width 必須是 {OUTLINE_WIDTH_RANGE[0]} 到 "
+        f"{OUTLINE_WIDTH_RANGE[1]} 之間的整數。",
+    ),
+    CaptionStyleField(
+        "outline_color",
+        "#000000",
+        _is_hex_color,
+        "caption.outline_color 必須是 #RRGGBB 格式。",
+    ),
+    CaptionStyleField(
+        "shadow",
+        False,
+        _is_bool,
+        "caption.shadow 必須是 boolean。",
+    ),
+    CaptionStyleField(
+        "background_color",
+        "#000000",
+        _is_hex_color,
+        "caption.background_color 必須是 #RRGGBB 格式。",
+    ),
+    CaptionStyleField(
+        "background_opacity",
+        0.5,
+        _is_ratio,
+        "caption.background_opacity 必須是 0 到 1 之間的數值。",
+    ),
+    CaptionStyleField(
+        "padding",
+        12,
+        _bounded(PADDING_RANGE),
+        f"caption.padding 必須是 {PADDING_RANGE[0]} 到 {PADDING_RANGE[1]} 之間的整數。",
+    ),
+    CaptionStyleField(
+        "radius",
+        8,
+        _bounded(RADIUS_RANGE),
+        f"caption.radius 必須是 {RADIUS_RANGE[0]} 到 {RADIUS_RANGE[1]} 之間的整數。",
+    ),
+    CaptionStyleField(
+        "align",
+        "left",
+        _one_of(CAPTION_ALIGNMENTS),
+        f"caption.align 必須是 {'／'.join(CAPTION_ALIGNMENTS)} 其中之一。",
+    ),
+    CaptionStyleField(
+        "scroll",
+        DEFAULT_SCROLL,
+        _is_bool,
+        "caption.scroll 必須是 boolean。",
+    ),
+    CaptionStyleField(
+        "scroll_ms",
+        DEFAULT_SCROLL_MS,
+        _bounded(SCROLL_MS_RANGE),
+        f"caption.scroll_ms 必須是 {SCROLL_MS_RANGE[0]} 到 {SCROLL_MS_RANGE[1]} 之間的整數。",
+    ),
+)
+
+CAPTION_STYLE_FIELDS_BY_NAME = {field.name: field for field in CAPTION_STYLE_FIELDS}
+_CAPTION_KEYS = _CAPTION_LAYOUT_KEYS | set(CAPTION_STYLE_FIELDS_BY_NAME)
 
 # Windows device names are short; a longer value is a sign the field is being
 # used for something it is not.
@@ -337,47 +471,21 @@ def caption_max_payload_length(settings: Mapping[str, Any]) -> int:
 
 
 def _validate_caption_style(caption: Mapping[str, Any]) -> None:
-    if "font" in caption and caption.get("font") not in CAPTION_FONTS:
-        raise ConfigurationError(
-            f"caption.font 必須是 {'／'.join(CAPTION_FONTS)} 其中之一。"
-        )
-    if "size" in caption and not _is_bounded_int(
-        caption.get("size"),
-        minimum=CAPTION_SIZE_RANGE[0],
-        maximum=CAPTION_SIZE_RANGE[1],
-    ):
-        raise ConfigurationError(
-            f"caption.size 必須是 {CAPTION_SIZE_RANGE[0]} 到 "
-            f"{CAPTION_SIZE_RANGE[1]} 之間的整數。"
-        )
-    if "scroll" in caption and not isinstance(caption.get("scroll"), bool):
-        raise ConfigurationError("caption.scroll 必須是 boolean。")
-    if "color" in caption and (
-        not isinstance(caption.get("color"), str)
-        or HEX_COLOR.fullmatch(str(caption.get("color"))) is None
-    ):
-        raise ConfigurationError("caption.color 必須是 #RRGGBB 格式。")
-    if "scroll_ms" in caption and not _is_bounded_int(
-        caption.get("scroll_ms"),
-        minimum=SCROLL_MS_RANGE[0],
-        maximum=SCROLL_MS_RANGE[1],
-    ):
-        raise ConfigurationError(
-            f"caption.scroll_ms 必須是 {SCROLL_MS_RANGE[0]} 到 "
-            f"{SCROLL_MS_RANGE[1]} 之間的整數。"
-        )
+    for field in CAPTION_STYLE_FIELDS:
+        if field.name in caption and not field.check(caption[field.name]):
+            raise ConfigurationError(field.error)
 
 
 def caption_style(settings: Mapping[str, Any]) -> dict[str, Any]:
     """Return the validated overlay appearance settings."""
     caption = settings.get("caption") or {}
-    return {
-        "font": caption.get("font", DEFAULT_CAPTION_FONT),
-        "size": int(caption.get("size", DEFAULT_CAPTION_SIZE)),
-        "scroll": bool(caption.get("scroll", DEFAULT_SCROLL)),
-        "scroll_ms": int(caption.get("scroll_ms", DEFAULT_SCROLL_MS)),
-        "color": str(caption.get("color", DEFAULT_CAPTION_COLOR)).upper(),
-    }
+    style: dict[str, Any] = {}
+    for field in CAPTION_STYLE_FIELDS:
+        value = caption.get(field.name, field.default)
+        # Colours are compared and rendered as strings; one canonical case
+        # keeps "did this change?" from depending on how it was typed.
+        style[field.name] = value.upper() if _is_hex_color(value) else value
+    return style
 
 
 def caption_layout(settings: Mapping[str, Any]) -> tuple[int, int]:

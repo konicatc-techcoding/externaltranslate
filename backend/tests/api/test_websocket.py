@@ -100,9 +100,13 @@ def test_appearance_and_layout_changes_are_pushed() -> None:
         runtime = client.app.state.runtime  # type: ignore[attr-defined]
 
         before = _push_key(runtime.snapshot())
-        runtime.update_caption_style(
-            font="kai", size=72, scroll=False, scroll_ms=400, color="#FF0000"
-        )
+        runtime.update_caption_style({"font": "kai", "size": 72, "color": "#FF0000"})
+        assert _push_key(runtime.snapshot()) != before
+
+        # An outline changes nothing about the text or the layout, so it is
+        # exactly the kind of change a revision-based key would drop.
+        before = _push_key(runtime.snapshot())
+        runtime.update_caption_style({"outline_width": 4})
         after_style = _push_key(runtime.snapshot())
         assert after_style != before
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import asdict
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -18,16 +19,7 @@ router = APIRouter(prefix="/api/caption-presets", tags=["presets"])
 
 
 def _to_item(preset: CaptionPreset) -> CaptionPresetItem:
-    return CaptionPresetItem(
-        name=preset.name,
-        chars_per_line=preset.chars_per_line,
-        max_lines=preset.max_lines,
-        font=preset.font,
-        size=preset.size,
-        color=preset.color,
-        scroll=preset.scroll,
-        scroll_ms=preset.scroll_ms,
-    )
+    return CaptionPresetItem(**asdict(preset))
 
 
 @router.get("", response_model=CaptionPresetList)
