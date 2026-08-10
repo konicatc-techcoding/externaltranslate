@@ -10,12 +10,20 @@
 
 ## 0. 下一步（Next Action）
 
-1. **等使用者授權 commit + push**（音訊裝置持久化已實作並實測，尚未 commit）。
+1. **等使用者授權 commit**（句尾換行已實作並實測，尚未 commit）。
 2. **v0.1 驗收剩餘項目**：斷網測試與裝置錯誤測試（見下方 ⏳ 待辦），使用者有空時執行。
-3. 使用者回報中英數混排斷行的實際效果後再調整 formatter（目前無已知問題）。
+3. 下一個實作階段是 **Stage 5（vMix）**；Stage 3.1／4.1 的功能已全數完成。
+4. 使用者回報中英數混排斷行的實際效果後再調整 formatter（目前無已知問題）。
 
-> 已結案的決策：音訊裝置持久化採「記名稱、啟動時比對回編號」（使用者 2026-08-10 拍板），
-> 見下方 Stage 4.1 音訊裝置持久化。**編號永遠不寫入設定檔。**
+> 已結案的決策（皆為使用者 2026-08-10 拍板，不得自行推翻）：
+> - 音訊裝置持久化採「記名稱、啟動時比對回編號」，見下方 Stage 4.1 音訊裝置持久化。
+>   **編號永遠不寫入設定檔。**
+> - **Playwright overlay 驗證排到 Stage 5（vMix）之後**，且只做尺寸與行為斷言、
+>   不做像素快照比對。理由見 `PLAN.md` Stage 4.1 剩餘能力。
+> - 打包分兩件事：**「一鍵啟動」（後端直接吐前端靜態檔 ＋ 捷徑）可以早做**，
+>   **「一鍵安裝」（Stage 6 pywebview／PyInstaller／Inno Setup）排到 Stage 5 之後**。
+>   理由：PyInstaller 最怕依賴變動，vMix 整合會再動執行期形狀；且 v0.1 驗收未關。
+>   使用者尚未指示開始，勿自行動工。
 
 ---
 
@@ -25,7 +33,7 @@
 |---|---|
 | 專案根目錄 | `C:\Users\razer\Documents\HermesWorkspace\ExternalTranslate` |
 | Branch / remote | `main` → `origin/main` (`github.com/konicatc-techcoding/externaltranslate.git`) |
-| 已發布 HEAD | `797ef17`（Stage 4.1 字幕樣式／預設／持久化，3 個 commit 已 push）；音訊裝置持久化**尚未 commit** |
+| 已發布 HEAD | 以 `git log --oneline -1 origin/main` 為準；本檔不記死 hash（會立刻過期）。目前未 push 的內容見 §0。 |
 | Python | 3.11，套件管理 `uv`；Windows Git Bash |
 | 關鍵執行規則 | 所有 Python／uv 指令必須 `PYTHONPATH=''`；證實 backend 需 canonical `uv run pytest -W error` |
 
@@ -120,6 +128,34 @@
   `backend/app/status/caption_status.py`）。
 - 控制頁另有翻譯計時器（開始翻譯歸零起算、停止時凍結）。
 
+### 句尾換行（2026-08-10，Stage 3.1 遺留問題結案）
+
+使用者原本提案「句號超過一行的 2/3 就換行」；改為**看剩餘空間**後實作。
+
+- `。！？` 結束一句時，若該行**剩餘不足 4 個全形字**，下一句另起一行。
+  `backend/app/captions/formatter.py` 的 `_sentence_cut()`／`SENTENCE_BREAK_MIN_CHARS`。
+- **為什麼不用比例**：每行 60 字時「超過 2/3」代表句子在第 41 字結束就丟掉近 20 字的可用
+  空間。以剩餘 4 字為準，不論 10 字或 60 字，留白都不超過 4 字。
+- **只認全形 `。！？`**：半形句點出現在「3.5 公里」「Mr. Chen」。句尾後緊跟的
+  `」』）` 併入同一句。
+- **判斷只看已顯示的內容，不看下一句多長**：字幕是片段串流，下一句通常還在打字中，
+  用它的長度判斷會讓已定案的斷行隨後續文字反覆改變、在讀者眼前跳動。這是刻意的取捨。
+- **只做斷行，刻意不做「句尾收束為 final」**：滑動視窗已決定觀眾看到什麼，收束會改動
+  `CaptionState` 語意（text 被清、revision 跳動、GT Title 收到的形狀改變），收益小而牽動大。
+- 設定為 `caption.sentence_breaks`（**layout 而非 style**，因為它會 reflow），預設開啟，
+  控制頁「字幕顯示範圍」面板可切換。
+
+實測（每行 10 字，「我們現在開始。請看螢幕」）：
+關閉→`我們現在開始。請看螢` / `幕`（一個字被孤立）；開啟→`我們現在開始。` / `請看螢幕`。
+
+**使用者回報的抖動已修正**（2026-08-10）：啟用句尾換行後滑動效果會抖。原因不在斷行，
+在 `CaptionPreview` 的觸發條件——原本是「第一行內容變了就播動畫」，但有兩件事會改變
+第一行卻沒有捲動：標點被拉回上一行（行變長）、視窗未滿時新增一行（既有文字不動）。
+句尾換行讓第二種變頻繁，抖動才被看見。
+改為**只在最上面那行被換掉時才播**：文字只會往後累加，所以被「編輯」的行必定以舊內容為
+前綴（`!first.startsWith(previous)`），真正捲動時前綴關係不成立。一個條件同時涵蓋
+視窗未滿、標點回拉、最後一行增長、`max_lines=1` 換句四種情況。
+
 ### Stage 4.1 補完（2026-08-10，字幕外觀）
 使用者決定先補完外觀，理由是它直接決定字幕在 vMix 畫面上的呈現效果。
 
@@ -193,10 +229,10 @@ font kai / size 64 / color #FFCC00 / scroll false / scroll_ms 400` 七項全部�
 
 | Gate | 結果 |
 |---|---:|
-| `PYTHONPATH='' uv run pytest -W error -q` | **460 passed** |
+| `PYTHONPATH='' uv run pytest -W error -q` | **468 passed** |
 | `uv run ruff check backend` | 通過 |
 | `uv run mypy backend/app` | 59 source files，無問題 |
-| `npm run test` | 15 files / **103 passed** |
+| `npm run test` | 15 files / **108 passed** |
 | `npm run build` | 通過 |
 
 ### ⏳ 待辦：v0.1 驗收剩餘項目（使用者有空時執行）

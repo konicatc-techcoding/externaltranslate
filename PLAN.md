@@ -836,12 +836,23 @@ Stage 0、Stage 1、Stage 1.2 與 Stage 2 已完成並通過驗證與發布：
 
 - ~~文字粗細、描邊與陰影、背景色／透明度／padding／圓角改為控制頁可調~~（2026-08-10 完成）
 - ~~斷線保留與淡出~~（2026-08-10 完成）
-- Overlay screenshot／Playwright 視覺與尺寸驗證（**唯一剩下的**；目前以真實瀏覽器
-  computed style 驗證取代，尚未自動化）。
+- Overlay Playwright 驗證 —— **2026-08-10 決議：排到 Stage 5（vMix）之後**。
+  理由：Stage 5 會改變 overlay 的使用方式（Browser Input 尺寸、與 GT Title 並存），
+  現在寫的尺寸斷言有一部分屆時要重寫。
+  範圍限定為**尺寸與行為斷言**（真實 Chromium 開頁 → 改設定 → 讀
+  `getBoundingClientRect()` 與 computed style → 斷言框高＝字級×1.3×行數、文字未被裁切、
+  背景 alpha、字型是否 fallback）。
+  **不做像素快照比對**：字幕用微軟正黑體與標楷體，渲染會隨 Windows 版本、DPI 縮放與字型
+  更新改變，基準圖換機器就全紅，最後只會養成「失敗就更新基準圖」的習慣。截圖只留作人工
+  檢查產出，不作為通過／失敗判準。
+  現況以真實瀏覽器 computed style 人工驗證代替（2026-08-10 已執行一次）。
+  新增 Playwright 需使用者授權（會下載自帶 Chromium，僅開發環境，不進 runtime 打包）。
 
-**Stage 3.1 遺留的產品決策**：句尾標點是否把累積文字升級為 final（見上方 Stage 3.1
-「句尾標點收束規則」）。目前只有 `finished=true` 與 session 邊界會收束，實測 Gemini Live
-在連續語音下幾乎不送 `finished=true`，因此字幕會持續累積、只靠滑動視窗換頁。
+**Stage 3.1 遺留的產品決策 —— 2026-08-10 已決議並實作**：改為**斷行規則**而非收束規則。
+`。！？` 結束一句時，若該行剩餘不足 4 個全形字則下一句換行（`caption.sentence_breaks`，
+預設開啟）。**刻意不做「句尾把累積文字升級為 final」**：滑動視窗已經決定觀眾看到什麼，
+收束只會改動 `CaptionState` 語意（text 被清、revision 跳動、GT Title 收到的形狀改變），
+收益小而牽動大。目前仍只有 `finished=true` 與 session 邊界會收束。
 
 ```text
 Stage 4.1（部分）→ 由使用者決定：補完 overlay 樣式／斷句規則／Stage 5 vMix
