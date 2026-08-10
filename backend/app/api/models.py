@@ -4,6 +4,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from backend.app.config import CHARS_PER_LINE_RANGE, MAX_LINES_RANGE
+
 
 class StrictModel(BaseModel):
     """Every request/response model is closed: unknown fields fail closed."""
@@ -56,7 +58,16 @@ class SettingsResponse(StrictModel):
     loopback_endpoint_index: int | None
     channel: int
     caption_max_payload_length: int
+    caption_chars_per_line: int
+    caption_max_lines: int
     session_rotation_seconds: int
+
+
+class CaptionLayoutUpdate(StrictModel):
+    """Display layout, adjustable while translating."""
+
+    chars_per_line: int = Field(ge=CHARS_PER_LINE_RANGE[0], le=CHARS_PER_LINE_RANGE[1])
+    max_lines: int = Field(ge=MAX_LINES_RANGE[0], le=MAX_LINES_RANGE[1])
 
 
 class SettingsUpdate(StrictModel):
@@ -107,6 +118,8 @@ class CaptionPayload(StrictModel):
     revision: int
     status: str
     text: str
+    #: Wrapped display window; every consumer renders these same lines.
+    lines: list[str]
     language_code: str
     updated_at: float
     session_generation: int
@@ -120,8 +133,16 @@ class MeterPayload(StrictModel):
     clipping: bool
 
 
+class CaptionLayout(StrictModel):
+    chars_per_line: int
+    max_lines: int
+
+
 class RuntimeStatusResponse(StrictModel):
     running: bool
+    #: Sent with every snapshot so an overlay can size its box without a
+    #: second request.
+    layout: CaptionLayout
     elapsed_seconds: float
     status_revision: int
     components: list[ComponentStatusItem]

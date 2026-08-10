@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
+from copy import deepcopy
 from typing import Any
 
 import pytest
@@ -13,6 +14,7 @@ from backend.app.services.runtime import (
     PipelineRuntime,
     RuntimeConflictError,
     RuntimeCredentialError,
+    RuntimeSelectionError,
 )
 from backend.app.status.models import Component, ComponentState
 from backend.app.translation.base import TranslationProviderError
@@ -398,6 +400,78 @@ def test_audio_selection_update_enforces_source_exclusivity() -> None:
     assert audio["source_kind"] == "wasapi_loopback"
     assert audio["device_index"] is None
     assert audio["loopback_endpoint_index"] == 7
+
+
+def test_caption_layout_can_change_while_running() -> None:
+    # Unlike the audio source, layout must be adjustable mid-broadcast:
+    # forcing a stop to re-flow captions is not acceptable on air.
+    async def scenario() -> None:
+        events = [
+            TranslationEvent(
+                kind=TranslationEventKind.OUTPUT_TRANSCRIPTION,
+                text="一二三四五六",
+                language_code="zh-Hant",
+                finished=False,
+            )
+        ]
+        runtime, _created, _provider = _runtime(provider=FakeProvider(events))
+        runtime.set_api_key("secret-api-key-value")
+        await runtime.start()
+        await _wait_until(lambda: runtime.snapshot().caption.text == "一二三四五六")
+
+        before = runtime.snapshot().caption
+        runtime.update_caption_layout(chars_per_line=4, max_lines=2)
+        after = runtime.snapshot().caption
+
+        assert after.lines == ("一二三四", "五六")
+        assert after.text == before.text
+        assert after.revision > before.revision
+        assert runtime.running is True
+        assert runtime.settings["caption"]["chars_per_line"] == 4
+
+        await runtime.stop()
+
+    asyncio.run(scenario())
+
+
+def test_caption_layout_rejects_out_of_range_values() -> None:
+    runtime, _created, _provider = _runtime()
+    original = runtime.settings["caption"]["chars_per_line"]
+
+    for chars, lines in ((0, 2), (999, 2), (20, 0), (20, 99)):
+        with pytest.raises(RuntimeSelectionError):
+            runtime.update_caption_layout(chars_per_line=chars, max_lines=lines)
+
+    assert runtime.settings["caption"]["chars_per_line"] == original
+
+
+def test_caption_layout_comes_from_settings_at_startup() -> None:
+    async def scenario() -> None:
+        settings = deepcopy(_SETTINGS)
+        settings["caption"] = {
+            "max_payload_length": 4096,
+            "chars_per_line": 4,
+            "max_lines": 3,
+        }
+        events = [
+            TranslationEvent(
+                kind=TranslationEventKind.OUTPUT_TRANSCRIPTION,
+                text="一二三四五六七八",
+                language_code="zh-Hant",
+                finished=False,
+            )
+        ]
+        runtime, _created, _provider = _runtime(
+            provider=FakeProvider(events), settings=settings
+        )
+        runtime.set_api_key("secret-api-key-value")
+        await runtime.start()
+        await _wait_until(lambda: runtime.snapshot().caption.lines != ())
+
+        assert runtime.snapshot().caption.lines == ("一二三四", "五六七八")
+        await runtime.stop()
+
+    asyncio.run(scenario())
 
 
 def test_audio_selection_cannot_change_while_running() -> None:

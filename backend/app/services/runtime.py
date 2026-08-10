@@ -19,7 +19,12 @@ from backend.app.audio.sources.wasapi_loopback import (
 from backend.app.captions.assembler import CaptionAssembler, CaptionEventSink
 from backend.app.captions.models import CaptionState
 from backend.app.captions.store import CaptionStore
-from backend.app.config import caption_max_payload_length
+from backend.app.config import (
+    CHARS_PER_LINE_RANGE,
+    MAX_LINES_RANGE,
+    caption_layout,
+    caption_max_payload_length,
+)
 from backend.app.services.translation_pipeline import TranslationPipeline
 from backend.app.status.caption_status import publish_caption_status
 from backend.app.status.models import RuntimeStatusSnapshot
@@ -67,6 +72,7 @@ class RuntimeSnapshot:
     meter: MeterReading | None
     last_error: str | None
     elapsed_seconds: float
+    layout: tuple[int, int]
 
 
 SourceFactory = Callable[[Mapping[str, Any]], AudioSource]
@@ -102,8 +108,17 @@ class PipelineRuntime:
         # One assembler for the runtime's life: a per-run assembler would
         # restart revisions at zero and the store, which outlives the run,
         # rejects that as a regression.
+        chars_per_line, max_lines = caption_layout(self._settings)
+        # Normalize the effective layout back into settings so the API always
+        # reports what is actually in force, never a missing key.
+        caption_settings = dict(self._settings.get("caption") or {})
+        caption_settings["chars_per_line"] = chars_per_line
+        caption_settings["max_lines"] = max_lines
+        self._settings["caption"] = caption_settings
         self._caption_assembler = CaptionAssembler(
-            max_payload_length=caption_max_payload_length(self._settings)
+            max_payload_length=caption_max_payload_length(self._settings),
+            chars_per_line=chars_per_line,
+            max_lines=max_lines,
         )
         self._caption_sink = CaptionEventSink(
             self._caption_assembler, self._caption_store
@@ -199,6 +214,34 @@ class PipelineRuntime:
             audio["device_index"] = None
             audio["loopback_endpoint_index"] = endpoint_index
         self._settings["audio"] = audio
+
+    def update_caption_layout(self, *, chars_per_line: int, max_lines: int) -> None:
+        """Change the display layout, re-flowing immediately.
+
+        Deliberately allowed while running: unlike the audio source, adjusting
+        how many characters fit on a line must not require taking captions off
+        air. The reflowed state is committed so the next snapshot carries it.
+        """
+        low, high = CHARS_PER_LINE_RANGE
+        if not low <= chars_per_line <= high:
+            raise RuntimeSelectionError(
+                f"每行字數必須介於 {low} 到 {high} 之間。"
+            )
+        low_lines, high_lines = MAX_LINES_RANGE
+        if not low_lines <= max_lines <= high_lines:
+            raise RuntimeSelectionError(
+                f"行數必須介於 {low_lines} 到 {high_lines} 之間。"
+            )
+
+        caption = dict(self._settings.get("caption") or {})
+        caption["chars_per_line"] = chars_per_line
+        caption["max_lines"] = max_lines
+        self._settings["caption"] = caption
+
+        state = self._caption_assembler.set_layout(
+            chars_per_line=chars_per_line, max_lines=max_lines
+        )
+        self._caption_store.commit(state)
 
     # -------------------------------------------------------------- lifecycle
 
@@ -316,6 +359,7 @@ class PipelineRuntime:
         source = self._source
         return RuntimeSnapshot(
             elapsed_seconds=self.elapsed_seconds,
+            layout=caption_layout(self._settings),
             running=self.running,
             status=self._status_store.snapshot(),
             caption=self._caption_store.snapshot(),

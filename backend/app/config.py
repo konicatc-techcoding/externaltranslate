@@ -37,7 +37,16 @@ _GEMINI_KEYS = {
 }
 _CAPTION_KEYS = {
     "max_payload_length",
+    "chars_per_line",
+    "max_lines",
 }
+
+# Display layout bounds; a caption narrower than 4 full-width characters or
+# taller than 10 lines is not a caption any consumer can use.
+CHARS_PER_LINE_RANGE = (4, 60)
+MAX_LINES_RANGE = (1, 10)
+DEFAULT_CHARS_PER_LINE = 20
+DEFAULT_MAX_LINES = 2
 
 
 class ConfigurationError(ValueError):
@@ -215,11 +224,40 @@ def _validate_caption_settings(settings: Settings) -> None:
             "caption.max_payload_length 必須是 1 到 100000 之間的整數。"
         )
 
+    if "chars_per_line" in caption and not _is_bounded_int(
+        caption.get("chars_per_line"),
+        minimum=CHARS_PER_LINE_RANGE[0],
+        maximum=CHARS_PER_LINE_RANGE[1],
+    ):
+        raise ConfigurationError(
+            f"caption.chars_per_line 必須是 {CHARS_PER_LINE_RANGE[0]} 到 "
+            f"{CHARS_PER_LINE_RANGE[1]} 之間的整數。"
+        )
+
+    if "max_lines" in caption and not _is_bounded_int(
+        caption.get("max_lines"),
+        minimum=MAX_LINES_RANGE[0],
+        maximum=MAX_LINES_RANGE[1],
+    ):
+        raise ConfigurationError(
+            f"caption.max_lines 必須是 {MAX_LINES_RANGE[0]} 到 "
+            f"{MAX_LINES_RANGE[1]} 之間的整數。"
+        )
+
 
 def caption_max_payload_length(settings: Mapping[str, Any]) -> int:
     """Return the validated caption payload limit (defaults to 4096)."""
     caption = settings.get("caption") or {}
     return int(caption.get("max_payload_length", 4096))
+
+
+def caption_layout(settings: Mapping[str, Any]) -> tuple[int, int]:
+    """Return the validated (chars_per_line, max_lines) display layout."""
+    caption = settings.get("caption") or {}
+    return (
+        int(caption.get("chars_per_line", DEFAULT_CHARS_PER_LINE)),
+        int(caption.get("max_lines", DEFAULT_MAX_LINES)),
+    )
 
 
 def _require_fixed_audio_int(

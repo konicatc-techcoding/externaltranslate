@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from backend.app.api.models import (
+    CaptionLayout,
     CaptionPayload,
     ComponentStatusItem,
     MeterPayload,
@@ -20,6 +21,9 @@ def runtime_status_response(snapshot: RuntimeSnapshot) -> RuntimeStatusResponse:
     meter = snapshot.meter
     return RuntimeStatusResponse(
         running=snapshot.running,
+        layout=CaptionLayout(
+            chars_per_line=snapshot.layout[0], max_lines=snapshot.layout[1]
+        ),
         elapsed_seconds=snapshot.elapsed_seconds,
         status_revision=snapshot.status.revision,
         components=[
@@ -37,6 +41,7 @@ def runtime_status_response(snapshot: RuntimeSnapshot) -> RuntimeStatusResponse:
             revision=caption.revision,
             status=caption.status.value,
             text=caption.text,
+            lines=list(caption.lines),
             language_code=caption.language_code,
             updated_at=caption.updated_at,
             session_generation=caption.session_generation,

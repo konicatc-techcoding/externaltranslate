@@ -115,6 +115,8 @@ def test_settings_expose_only_non_secret_fields(client: TestClient) -> None:
         "loopback_endpoint_index": None,
         "channel": 1,
         "caption_max_payload_length": 4096,
+        "caption_chars_per_line": 20,
+        "caption_max_lines": 2,
         "session_rotation_seconds": 480,
     }
     assert "api_key" not in str(body).lower()
@@ -130,6 +132,35 @@ def test_settings_update_enforces_source_exclusivity(client: TestClient) -> None
     assert body["source_kind"] == "input_device"
     assert body["device_index"] == 3
     assert body["loopback_endpoint_index"] is None
+
+
+def test_caption_layout_can_be_changed_through_the_api(client: TestClient) -> None:
+    response = client.put(
+        "/api/settings/caption-layout", json={"chars_per_line": 10, "max_lines": 5}
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["caption_chars_per_line"] == 10
+    assert body["caption_max_lines"] == 5
+    assert client.get("/api/settings").json()["caption_max_lines"] == 5
+
+
+def test_caption_layout_rejects_out_of_range_and_unknown_fields(
+    client: TestClient,
+) -> None:
+    for payload in (
+        {"chars_per_line": 0, "max_lines": 2},
+        {"chars_per_line": 999, "max_lines": 2},
+        {"chars_per_line": 10, "max_lines": 0},
+        {"chars_per_line": 10, "max_lines": 99},
+        {"chars_per_line": 10, "max_lines": 2, "font": "serif"},
+    ):
+        assert (
+            client.put("/api/settings/caption-layout", json=payload).status_code == 422
+        )
+
+    # the rejected updates must leave the effective layout untouched
+    assert client.get("/api/settings").json()["caption_chars_per_line"] == 20
 
 
 def test_settings_update_rejects_unknown_fields(client: TestClient) -> None:

@@ -5,8 +5,12 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from backend.app.api.dependencies import get_runtime
-from backend.app.api.models import SettingsResponse, SettingsUpdate
-from backend.app.config import caption_max_payload_length
+from backend.app.api.models import (
+    CaptionLayoutUpdate,
+    SettingsResponse,
+    SettingsUpdate,
+)
+from backend.app.config import caption_layout, caption_max_payload_length
 from backend.app.services.runtime import (
     PipelineRuntime,
     RuntimeConflictError,
@@ -25,6 +29,8 @@ def _to_response(settings: Any) -> SettingsResponse:
         loopback_endpoint_index=audio["loopback_endpoint_index"],
         channel=audio["channel"],
         caption_max_payload_length=caption_max_payload_length(settings),
+        caption_chars_per_line=caption_layout(settings)[0],
+        caption_max_lines=caption_layout(settings)[1],
         session_rotation_seconds=gemini["session_rotation_seconds"],
     )
 
@@ -52,6 +58,23 @@ def update_settings(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail=str(exc)
         ) from None
+    except RuntimeSelectionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
+        ) from None
+    return _to_response(runtime.settings)
+
+
+@router.put("/settings/caption-layout", response_model=SettingsResponse)
+def update_caption_layout(
+    payload: CaptionLayoutUpdate,
+    runtime: Annotated[PipelineRuntime, Depends(get_runtime)],
+) -> SettingsResponse:
+    """Change the caption layout, allowed while translating."""
+    try:
+        runtime.update_caption_layout(
+            chars_per_line=payload.chars_per_line, max_lines=payload.max_lines
+        )
     except RuntimeSelectionError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
