@@ -51,6 +51,69 @@ describe("CaptionPreview", () => {
     expect(container.querySelector('[data-stale="true"]')).not.toBeNull();
   });
 
+  it("關閉滑動時不套用動畫", () => {
+    const { rerender } = render(
+      <CaptionPreview caption={caption({ lines: ["第一行"] })} scroll={false} />,
+    );
+    rerender(
+      <CaptionPreview
+        caption={caption({ lines: ["第一行", "第二行"] })}
+        scroll={false}
+      />,
+    );
+    expect(screen.getByTestId("caption-viewport").className).not.toContain(
+      "sliding",
+    );
+  });
+
+  it("新的一行進場才滑動", () => {
+    const { rerender } = render(
+      <CaptionPreview caption={caption({ lines: ["第一行"] })} scroll />,
+    );
+    rerender(
+      <CaptionPreview caption={caption({ lines: ["第一行", "第二行"] })} scroll />,
+    );
+    expect(screen.getByTestId("caption-viewport").className).toContain("sliding");
+  });
+
+  it("最後一行逐字增長不觸發滑動", () => {
+    const { rerender } = render(
+      <CaptionPreview caption={caption({ lines: ["第一行", "第二"] })} scroll />,
+    );
+    rerender(
+      <CaptionPreview caption={caption({ lines: ["第一行", "第二行"] })} scroll />,
+    );
+    // partial fragments arrive several times a second; animating them would
+    // make the caption shiver
+    expect(screen.getByTestId("caption-viewport").className).not.toContain(
+      "sliding",
+    );
+  });
+
+  it("斷線時不滑動", () => {
+    const { rerender } = render(
+      <CaptionPreview caption={caption({ lines: ["第一行"] })} scroll />,
+    );
+    rerender(
+      <CaptionPreview
+        caption={caption({ lines: ["第一行", "第二行"] })}
+        scroll
+        stale
+      />,
+    );
+    expect(screen.getByTestId("caption-viewport").className).not.toContain(
+      "sliding",
+    );
+  });
+
+  it("滑動時間傳進 CSS 變數", () => {
+    render(
+      <CaptionPreview caption={caption()} scroll scrollMs={400} />,
+    );
+    const box = screen.getByTestId("caption-viewport").parentElement as HTMLElement;
+    expect(box.style.getPropertyValue("--caption-scroll-ms")).toBe("400ms");
+  });
+
   it("行數換算為固定高度且裁切溢出內容", () => {
     render(
       <CaptionPreview

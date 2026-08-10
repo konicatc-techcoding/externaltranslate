@@ -20,16 +20,24 @@ export interface OverlayStyle {
  * overlay is pasted into vMix and OBS from URLs users copy around.
  */
 export const FONT_STACKS: Record<string, string> = {
-  sans: '"Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif',
-  serif: '"Noto Serif TC", "Microsoft JhengHei", Georgia, serif',
-  mono: '"Noto Sans Mono CJK TC", Consolas, monospace',
+  jhenghei: '"Microsoft JhengHei", "Microsoft JhengHei UI", sans-serif',
+  kai: '"DFKai-SB", "BiauKai", serif',
+  // Not bundled with Windows; the playout machine must have it installed or
+  // the browser silently falls back.
+  "noto-sans-tc": '"Noto Sans TC", "Microsoft JhengHei", sans-serif',
+};
+
+export const FONT_LABELS: Record<string, string> = {
+  jhenghei: "微軟正黑體",
+  kai: "標楷體",
+  "noto-sans-tc": "Noto Sans TC（需另行安裝）",
 };
 
 export const DEFAULT_OVERLAY_STYLE: OverlayStyle = {
   width: "90%",
   lines: 2,
   size: 48,
-  font: FONT_STACKS.sans,
+  font: FONT_STACKS.jhenghei,
   color: "#FFFFFF",
   bg: "#000000",
   opacity: 0.5,

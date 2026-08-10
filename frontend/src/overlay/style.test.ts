@@ -18,11 +18,11 @@ describe("overlay style parameters", () => {
   });
 
   it("套用合法參數", () => {
-    expect(parse("width=1600&lines=3&size=64&font=serif&color=%23FF0000&bg=%23112233&opacity=0.25&align=center")).toEqual({
+    expect(parse("width=1600&lines=3&size=64&font=kai&color=%23FF0000&bg=%23112233&opacity=0.25&align=center")).toEqual({
       width: "1600px",
       lines: 3,
       size: 64,
-      font: FONT_STACKS.serif,
+      font: FONT_STACKS.kai,
       color: "#FF0000",
       bg: "#112233",
       opacity: 0.25,
@@ -47,7 +47,7 @@ describe("overlay style parameters", () => {
   });
 
   it("字型只接受白名單", () => {
-    expect(parse("font=serif").font).toBe(FONT_STACKS.serif);
+    expect(parse("font=kai").font).toBe(FONT_STACKS.kai);
     expect(parse("font=Comic Sans, url(evil)").font).toBe(DEFAULT_OVERLAY_STYLE.font);
   });
 

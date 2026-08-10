@@ -36,9 +36,15 @@ const RESPONSES: Record<string, unknown> = {
     caption_max_payload_length: 4096,
     caption_chars_per_line: 20,
     caption_max_lines: 2,
+    caption_font: "jhenghei",
+    caption_size: 48,
+    caption_scroll: true,
+    caption_scroll_ms: 250,
+    caption_color: "#FFFFFF",
     session_rotation_seconds: 480,
   },
   "/api/credentials": { configured: false },
+  "/api/caption-presets": { presets: [] },
   "/api/pipeline/status": IDLE_RUNTIME_STATUS,
 };
 
@@ -69,6 +75,34 @@ describe("App", () => {
     expect(screen.getByText("即時翻譯字幕控制台")).toBeInTheDocument();
     await waitFor(() =>
       expect(screen.getByText("環境檢查")).toBeInTheDocument(),
+    );
+  });
+
+  it("控制頁可以一鍵清除字幕", async () => {
+    const calls: Array<[string, RequestInit | undefined]> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (path: string, init?: RequestInit) => {
+        calls.push([path, init]);
+        return {
+          ok: true,
+          status: 200,
+          json: async () => RESPONSES[path] ?? { message: "字幕已清除。" },
+        };
+      }),
+    );
+
+    render(<App pathname="/" />);
+    const button = await screen.findByRole("button", { name: "清除字幕" });
+    button.click();
+
+    await waitFor(() =>
+      expect(
+        calls.some(
+          ([path, init]) =>
+            path === "/api/captions/clear" && init?.method === "POST",
+        ),
+      ).toBe(true),
     );
   });
 

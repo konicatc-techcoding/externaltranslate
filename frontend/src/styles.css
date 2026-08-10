@@ -108,6 +108,30 @@ select {
   font-size: 0.9rem;
 }
 
+.preset-list {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.preset-list li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.preset-list__name {
+  font-weight: 700;
+}
+
+.preset-list__detail {
+  color: #9db2cd;
+  font-size: 0.9rem;
+}
+
 .meter__row {
   display: flex;
   gap: 0.75rem;
@@ -117,6 +141,21 @@ select {
 .meter__clip {
   color: #ff9d9d;
   font-weight: 700;
+}
+
+/* Destructive action: red so it reads as "this removes something", and it
+   sits by the caption preview rather than next to Stop. */
+.button--danger {
+  color: #fff;
+  background: #a5231f;
+  border: 1px solid #c9403b;
+  border-radius: 0.35rem;
+  padding: 0.4rem 0.9rem;
+  font-weight: 700;
+}
+
+.button--danger:hover {
+  background: #c9403b;
 }
 
 .clock {
@@ -157,6 +196,22 @@ select {
 .caption-box__viewport {
   height: var(--caption-height);
   overflow: hidden;
+}
+
+/* A new line slides up into place. Driven by a class rather than a CSS
+   transition on every render, so a partial line growing character by
+   character never animates. */
+.caption-box__viewport--sliding {
+  animation: caption-slide-up var(--caption-scroll-ms, 250ms) ease-out;
+}
+
+@keyframes caption-slide-up {
+  from {
+    transform: translateY(calc(var(--caption-size) * var(--caption-line-height)));
+  }
+  to {
+    transform: translateY(0);
+  }
 }
 
 .caption-box__text,

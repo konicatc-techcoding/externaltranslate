@@ -88,7 +88,7 @@ describe("OverlayPage", () => {
     const box = screen.getByTestId("caption-viewport").parentElement as HTMLElement;
     expect(box.style.getPropertyValue("--caption-size")).toBe("48px");
     expect(box.style.getPropertyValue("--caption-color")).toBe("#FFFFFF");
-    expect(box.style.getPropertyValue("--caption-font")).toContain("Noto Sans TC");
+    expect(box.style.getPropertyValue("--caption-font")).toContain("Microsoft JhengHei");
   });
 
   it("斷線時保留最後字幕並標示過期", () => {

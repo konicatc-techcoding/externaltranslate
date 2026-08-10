@@ -6,7 +6,9 @@ import { ApiKeyField } from "../components/ApiKeyField";
 import { AudioMeter } from "../components/AudioMeter";
 import { AudioSourceSelector } from "../components/AudioSourceSelector";
 import { CaptionLayoutSettings } from "../components/CaptionLayoutSettings";
+import { CaptionPresets } from "../components/CaptionPresets";
 import { CaptionPreview } from "../components/CaptionPreview";
+import { CaptionStyleSettings } from "../components/CaptionStyleSettings";
 import { ComponentStatusList } from "../components/ComponentStatusList";
 import { PrerequisitePanel } from "../components/PrerequisitePanel";
 import { TranslationClock } from "../components/TranslationClock";
@@ -16,6 +18,7 @@ import {
   type AppSettings,
   type DeviceItem,
   type LoopbackEndpointItem,
+  type CaptionPreset,
   type PrerequisiteItem,
   type RuntimeStatus,
   type SourceKind,
@@ -58,6 +61,7 @@ export function ControlPage() {
   const [stopping, setStopping] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<string | null>(null);
+  const [presets, setPresets] = useState<CaptionPreset[]>([]);
 
   const report = useCallback((caught: unknown) => {
     setError(caught instanceof ApiError ? caught.message : zhTW.errors.generic);
@@ -66,7 +70,7 @@ export function ControlPage() {
   const loadCatalog = useCallback(async () => {
     setLoading(true);
     try {
-      const [prereq, deviceList, endpointList, currentSettings, credential] =
+      const [prereq, deviceList, endpointList, currentSettings, credential, presetList] =
         await Promise.all([
           api.prerequisites(),
           api.devices().catch(() => ({ devices: [] as DeviceItem[] })),
@@ -75,12 +79,14 @@ export function ControlPage() {
             .catch(() => ({ endpoints: [] as LoopbackEndpointItem[] })),
           api.settings(),
           api.credentialState(),
+          api.presets().catch(() => ({ presets: [] as CaptionPreset[] })),
         ]);
       setPrerequisites(prereq.results);
       setDevices(deviceList.devices);
       setEndpoints(endpointList.endpoints);
       setSettings(currentSettings);
       setConfigured(credential.configured);
+      setPresets(presetList.presets);
       setError(null);
     } catch (caught) {
       report(caught);
@@ -229,20 +235,69 @@ export function ControlPage() {
         }}
       />
 
+      <CaptionStyleSettings
+        style={status.style}
+        onChange={(style) => {
+          void api
+            .updateCaptionStyle(style)
+            .then(() => setError(null))
+            .catch(report);
+        }}
+      />
+
+      <CaptionPresets
+        presets={presets}
+        onSave={(name) => {
+          void api
+            .savePreset(name)
+            .then((result) => {
+              setPresets(result.presets);
+              setError(null);
+            })
+            .catch(report);
+        }}
+        onApply={(name) => {
+          void api.applyPreset(name).then(() => setError(null)).catch(report);
+        }}
+        onDelete={(name) => {
+          void api
+            .deletePreset(name)
+            .then((result) => setPresets(result.presets))
+            .catch(report);
+        }}
+      />
+
       <AudioMeter meter={status.meter} />
       <ComponentStatusList components={status.components} stale={stale} />
 
       <section className="panel" aria-labelledby="caption-title">
         <div className="panel__header">
           <h2 id="caption-title">{zhTW.caption.title}</h2>
-          <a href="/overlay" target="_blank" rel="noreferrer">
-            {zhTW.caption.overlayLink}
-          </a>
+          <div className="field-row">
+            <button
+              type="button"
+              className="button--danger"
+              title={zhTW.caption.clearHint}
+              onClick={() => {
+                void api
+                  .clearCaptions()
+                  .then(() => setError(null))
+                  .catch(report);
+              }}
+            >
+              {zhTW.caption.clear}
+            </button>
+            <a href="/overlay" target="_blank" rel="noreferrer">
+              {zhTW.caption.overlayLink}
+            </a>
+          </div>
         </div>
         <CaptionPreview
           caption={status.caption}
           stale={stale}
           maxLines={status.layout.max_lines}
+          scroll={status.style.scroll}
+          scrollMs={status.style.scroll_ms}
         />
       </section>
     </main>

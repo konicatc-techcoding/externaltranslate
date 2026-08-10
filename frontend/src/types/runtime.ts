@@ -39,9 +39,18 @@ export interface CaptionLayout {
   max_lines: number;
 }
 
+export interface CaptionStyle {
+  font: string;
+  size: number;
+  scroll: boolean;
+  scroll_ms: number;
+  color: string;
+}
+
 export interface RuntimeStatus {
   running: boolean;
   layout: CaptionLayout;
+  style: CaptionStyle;
   /** Duration of the current (or last) translation run, in seconds. */
   elapsed_seconds: number;
   status_revision: number;
@@ -88,6 +97,11 @@ export interface AppSettings {
   caption_max_payload_length: number;
   caption_chars_per_line: number;
   caption_max_lines: number;
+  caption_font: string;
+  caption_size: number;
+  caption_scroll: boolean;
+  caption_scroll_ms: number;
+  caption_color: string;
   session_rotation_seconds: number;
 }
 
@@ -103,6 +117,13 @@ export interface CredentialTestResult {
 export const IDLE_RUNTIME_STATUS: RuntimeStatus = {
   running: false,
   layout: { chars_per_line: 20, max_lines: 2 },
+  style: {
+    font: "jhenghei",
+    size: 48,
+    scroll: true,
+    scroll_ms: 250,
+    color: "#FFFFFF",
+  },
   elapsed_seconds: 0,
   status_revision: 0,
   components: [],
@@ -118,3 +139,14 @@ export const IDLE_RUNTIME_STATUS: RuntimeStatus = {
   meter: null,
   last_error: null,
 };
+
+export interface CaptionPreset {
+  name: string;
+  chars_per_line: number;
+  max_lines: number;
+  font: string;
+  size: number;
+  color: string;
+  scroll: boolean;
+  scroll_ms: number;
+}

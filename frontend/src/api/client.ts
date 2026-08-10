@@ -1,5 +1,6 @@
 import type {
   AppSettings,
+  CaptionPreset,
   CredentialState,
   CredentialTestResult,
   DeviceItem,
@@ -84,6 +85,40 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ chars_per_line, max_lines }),
     }),
+
+  updateCaptionStyle: (style: {
+    font: string;
+    size: number;
+    scroll: boolean;
+    scroll_ms: number;
+  }) =>
+    request<AppSettings>("/api/settings/caption-style", {
+      method: "PUT",
+      body: JSON.stringify(style),
+    }),
+
+  presets: () => request<{ presets: CaptionPreset[] }>("/api/caption-presets"),
+
+  savePreset: (name: string) =>
+    request<{ presets: CaptionPreset[] }>("/api/caption-presets", {
+      method: "PUT",
+      body: JSON.stringify({ name }),
+    }),
+
+  applyPreset: (name: string) =>
+    request<{ message: string }>(
+      `/api/caption-presets/${encodeURIComponent(name)}/apply`,
+      { method: "POST" },
+    ),
+
+  deletePreset: (name: string) =>
+    request<{ presets: CaptionPreset[] }>(
+      `/api/caption-presets/${encodeURIComponent(name)}`,
+      { method: "DELETE" },
+    ),
+
+  clearCaptions: () =>
+    request<{ message: string }>("/api/captions/clear", { method: "POST" }),
 
   credentialState: () => request<CredentialState>("/api/credentials"),
 
