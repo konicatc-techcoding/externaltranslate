@@ -26,6 +26,10 @@ ExternalTranslate 是 Windows 本機優先的即時翻譯字幕應用程式。�
 - **Stage 3.1（驗證中）**：後端字幕排版器——以全形寬計算的「每行字數 × 行數」、中文標點
   禁則、拉丁字詞不硬拆、滑動視窗。控制頁可於翻譯進行中即時調整並重新排版；overlay 與
   vMix GT Title 共用同一份`CaptionState.lines`。
+- **Stage 4.1（驗證中）**：字幕外觀與操作——字型（微軟正黑體／標楷體／Noto Sans TC）、
+  字級、文字顏色、向上滑動效果（可開關並調整毫秒）、**一鍵清空字幕**、
+  **字幕格式預設的存讀刪**，以及**設定持久化**：控制頁改過的版面與樣式會寫回
+  `config/user.yaml`，重新啟動或換電腦後自動還原。
 - **Stage 3.2**：`backend/app/status/`（models／store／publisher）提供runtime元件
   狀態與sanitized structured log，session supervisor在連線、rotation、backoff與fail-closed
   時發布狀態；CLI新增`--status-events`與`--caption-state`。真實Gemini smoke尚未完成前，
@@ -33,7 +37,6 @@ ExternalTranslate 是 Windows 本機優先的即時翻譯字幕應用程式。�
 
 目前不會：
 
-- 啟動 FastAPI/WebSocket。
 - 連線 vMix。
 - 安裝或修改任何系統驅動、PATH 或全域套件。
 
@@ -317,6 +320,67 @@ curl -X PUT http://127.0.0.1:8765/api/settings/caption-layout -H "Content-Type: 
 略有差異。斷行以 code point 為單位，不做 grapheme 分群（2026-08-10 決議），ZWJ 組合表情
 若剛好落在行尾邊界可能被拆開；翻譯輸出以繁體中文為主，實務上不會遇到。
 
+### 字幕樣式（字型／字級／顏色／滑動）
+
+控制頁的「字幕樣式」面板，同樣**翻譯進行中可調整、立即生效**：
+
+- **字型**：白名單三選一——`jhenghei`（微軟正黑體）、`kai`（標楷體）、
+  `noto-sans-tc`（Noto Sans TC，**Windows 未內建，播放端需另行安裝**，未安裝時瀏覽器
+  會自動 fallback）。字型是白名單而非自由字串：這個值會進到 CSS font stack，
+  且 overlay 網址常被複製到 vMix／OBS，自由字串等於注入點。
+- **字級**：12–200 px。
+- **文字顏色**：嚴格 `#RRGGBB`。
+- **向上滑動效果**：可開關；開啟時新行由下往上推入，滑動時間 120–1000 ms。
+
+```bash
+curl -X PUT http://127.0.0.1:8765/api/settings/caption-style -H "Content-Type: application/json" -d "{\"font\":\"kai\",\"size\":64,\"scroll\":true,\"scroll_ms\":250,\"color\":\"#FFCC00\"}"
+```
+
+樣式**只影響網頁 overlay**；Stage 5 的 vMix GT Title 有自己的字型與動畫設定，
+共用的只有後端斷好的 `CaptionState.lines`。
+
+### 清空字幕
+
+控制頁的紅底白字「清空字幕」按鈕（`POST /api/captions/clear`）會立刻清掉目前畫面上的
+字幕並讓 revision +1 推播出去。用途是長時間沒有偵測到語音時，手動移除過期字幕；
+**不會停止翻譯**，下一段語音照常接上。
+
+### 字幕格式預設
+
+把目前生效的版面＋樣式（每行字數、行數、字型、字級、顏色、滑動與滑動時間）存成具名預設，
+之後一鍵套用：
+
+| 動作 | API |
+|---|---|
+| 列出 | `GET /api/caption-presets` |
+| 儲存目前設定 | `PUT /api/caption-presets`（body：`{"name": "..."}`） |
+| 套用 | `POST /api/caption-presets/{name}/apply` |
+| 刪除 | `DELETE /api/caption-presets/{name}` |
+
+存放於 `config/caption-presets.json`（已 gitignore）。所有預設放在**同一個 JSON 檔內、以名稱
+為 key**，名稱不會被當成檔案路徑，因此預設名稱無法用來做路徑穿越。名稱上限 60 字元、
+最多 50 組；檔案損毀或個別項目不合法時只略過壞掉的部分，不會讓控制頁開不起來。
+
+### 設定持久化與換電腦
+
+控制頁改過的**字幕版面與樣式**會寫回 `config/user.yaml`，重新啟動後端後自動還原，
+不必每次重設。換到另一台電腦時複製這兩個檔案即可：
+
+```text
+config/user.yaml              ← 目前生效的字幕版面與樣式
+config/caption-presets.json   ← 所有已儲存的字幕預設
+```
+
+兩者都已被 `.gitignore` 排除，不會進版控。三個刻意的行為：
+
+- **API Key 永遠不會被寫進去**：寫檔前仍跑 secret 欄位檢查，key 只留在程序記憶體。
+- **`config/user.yaml` 解析失敗時拒絕覆寫**：直接蓋掉等於銷毀使用者可能還想修好的設定。
+- **寫檔失敗不影響操作**：磁碟唯讀或路徑不存在時設定照常生效，只是沒存下來；
+  持久化是便利功能，不該讓直播中的調整失敗。
+
+**音訊裝置選擇不會被持久化**：裝置編號在不同電腦代表不同硬體，同一台重新插拔也可能改變，
+沿用舊編號會錄到錯的來源。每次啟動仍需選擇音訊來源。
+
 ### Overlay 顯示參數
 
 `/overlay`可用query參數自訂，全部為樣式參數，不含任何credential：
@@ -326,7 +390,7 @@ curl -X PUT http://127.0.0.1:8765/api/settings/caption-layout -H "Content-Type: 
 | `width` | 字幕框寬度（`1600`為px，`75%`為百分比） | `90%` |
 | `lines` | **本頁**顯示行數上限（1–10），覆寫後端設定 | 後端設定值 |
 | `size` | 字級px（12–200） | `48` |
-| `font` | `sans`／`serif`／`mono`（白名單） | `sans` |
+| `font` | `jhenghei`／`kai`／`noto-sans-tc`（白名單） | `jhenghei` |
 | `color` | 文字色，嚴格`#RRGGBB` | `#FFFFFF` |
 | `bg` | 字幕框背景色，嚴格`#RRGGBB` | `#000000` |
 | `opacity` | 背景透明度0–1，`0`為完全透明 | `0.5` |
@@ -347,6 +411,9 @@ Browser Input 吃同一份字幕。要改每行字數請用控制頁或 caption-
 ```text
 Runtime override → 使用者設定 → config/default.yaml
 ```
+
+「使用者設定」預設就是 `config/user.yaml`（可用 `--user-config` 指定別的檔案）。
+控制頁調整字幕版面與樣式時，程式會把結果**寫回這個檔案**，所以下次啟動讀到的就是上次的設定。
 
 Audio設定使用strict schema：未知欄位或尚未接線的值會fail closed，不會接受後忽略。
 Validated `source_kind`、device/endpoint selection、channel與queue capacities由同一

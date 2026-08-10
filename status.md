@@ -1,9 +1,21 @@
-# ExternalTranslate — Stage 3.2 交接狀態 (status.md)
+# ExternalTranslate — Stage 4.1 交接狀態 (status.md)
 
-> 本文件供後續 model／agent 快速接手。最後更新：2026-08-09（Stage 3.2 實作與真實 smoke）。
+> 本文件供後續 model／agent 快速接手。最後更新：2026-08-10（Stage 4.1 字幕外觀、清空、預設與設定持久化）。
 > 閱讀本檔前，請先重讀 `AGENTS.md`、`BUILD.md`、`PLAN.md` 與
 > `.hermes/plans/2026-08-09_123446-stage-3-captions.md`、
-> `.hermes/plans/2026-08-09_124912-stage-3.2-observability.md`。
+> `.hermes/plans/2026-08-09_124912-stage-3.2-observability.md`、
+> `.hermes/plans/2026-08-10_105311-stage-3.1-caption-formatter.md`。
+
+---
+
+## 0. 下一步（Next Action）
+
+1. **等使用者授權 push**（Stage 4.1 已 commit，尚未 push）。
+2. **等使用者決定：音訊裝置選擇要不要持久化**。目前刻意不存（裝置編號跨機器／重新插拔
+   都可能代表不同硬體）。已提出的兩個折衷方案：只記「來源類型＋聲道」不記編號；
+   或記「裝置名稱」啟動時比對找回編號，找不到就退回未選擇。**未經使用者拍板不得自行實作。**
+3. **v0.1 驗收剩餘項目**：斷網測試與裝置錯誤測試（見下方 ⏳ 待辦），使用者有空時執行。
+4. 使用者回報中英數混排斷行的實際效果後再調整 formatter（目前無已知問題）。
 
 ---
 
@@ -13,7 +25,7 @@
 |---|---|
 | 專案根目錄 | `C:\Users\razer\Documents\HermesWorkspace\ExternalTranslate` |
 | Branch / remote | `main` → `origin/main` (`github.com/konicatc-techcoding/externaltranslate.git`) |
-| 已發布 HEAD | `6691416`（`docs(status): record Stage 3 acceptance and release`）；Stage 3 實作為前一個 commit `c618fb4`（`feat(captions): …`） |
+| 已發布 HEAD | `fb7fdd1`（`docs: document the caption layout and clear the v0.1 limitation`，Stage 3.1 收尾）；Stage 4.1 已 commit 但**尚未 push** |
 | Python | 3.11，套件管理 `uv`；Windows Git Bash |
 | 關鍵執行規則 | 所有 Python／uv 指令必須 `PYTHONPATH=''`；證實 backend 需 canonical `uv run pytest -W error` |
 
@@ -24,7 +36,7 @@
 - **Stage 2**：官方 `google-genai` Gemini Live Translate、provider-neutral events、安全 CLI、長期 AudioSource／外層 session supervisor；177 tests、3 輪 independent review、真實 Gemini smoke（input 23／output 22），commit + push（`ac5934e`）。
 - **Stage 3（已實作＋驗證，已 commit + push `c618fb4`）**：`backend/app/captions/`（models／sanitizer／assembler／store）組裝 canonical `CaptionState`；`caption.max_payload_length` strict schema；**215 passed**、Ruff/Mypy clean、audit 0（已修 `nanoid` patch advisory）。
 
-### Stage 3.2（已實作＋真實 smoke 通過，**尚未 commit**）
+### Stage 3.2（已實作＋真實 smoke 通過，已 commit）
 計劃檔：`.hermes/plans/2026-08-09_124912-stage-3.2-observability.md`（`.hermes/` 被 `.gitignore` 排除，不入 Git）。
 
 - 新增 `backend/app/status/`（models／store／publisher）：component/state/reason 三個 StrEnum、
@@ -95,6 +107,51 @@
 
 實測：面板 20/2 → 送出 6/5 即時生效（無需重整）、999 被 422 拒絕且生效值不變。
 **待使用者確認**：中英數混排的實際效果（使用者表示情況少見，有問題再回報）。
+
+### Stage 4（Phase A/B，已 commit）
+- `backend/app/api/`：只綁 `127.0.0.1` 的 FastAPI 控制服務、`PipelineRuntime`、
+  caption WebSocket（`/ws/captions`）、catalog／settings／credentials／pipeline routes。
+- WebSocket 有 **Origin allowlist**（瀏覽器不對 WS 套用 same-origin policy，沒這道檢查
+  任何網頁都能讀本機字幕），非 loopback 來源以 1008 關閉；無 `Origin` 的非瀏覽器用戶端放行。
+- `frontend/`：繁體中文控制頁與 `/overlay`；dev server 固定 **port 5180**（5173 被 agentos 佔用），
+  dev 時 WebSocket **直連後端**（Vite 8 的 ws proxy 會 `write ECONNABORTED`）。
+- 途中修掉的兩個真實 bug：Stop 後再 Start 失敗（改為一個 runtime 一個 assembler ＋
+  `reset()` 維持 revision 單調）；`caption_sink` 卡在 idle（改用共用的
+  `backend/app/status/caption_status.py`）。
+- 控制頁另有翻譯計時器（開始翻譯歸零起算、停止時凍結）。
+
+### Stage 4.1（已實作＋實測通過，本次 commit）
+使用者需求：字型／字級／滑動效果 → 一鍵清空字幕 → 顏色與字幕格式預設 → 重啟還原設定。
+
+- **字幕樣式**：`caption.font`（`jhenghei`／`kai`／`noto-sans-tc` 白名單）、`caption.size`
+  （12–200）、`caption.color`（嚴格 `#RRGGBB`）、`caption.scroll` 與 `caption.scroll_ms`
+  （120–1000）。`PUT /api/settings/caption-style`，**執行中可改、立即生效**。
+  字型是白名單而非自由字串：值會進 CSS font stack，且 overlay 網址會被複製到 vMix／OBS。
+- **清空字幕**：`POST /api/captions/clear` + 控制頁紅底白字按鈕；清畫面、revision +1 推播，
+  **不停止翻譯**。
+- **字幕格式預設**：`backend/app/captions/presets.py` + `/api/caption-presets`
+  （GET 列出／PUT 存目前設定／POST `{name}/apply`／DELETE）。存於
+  `config/caption-presets.json`（已 gitignore）。**所有預設放在同一個 JSON 檔、以名稱為 key**
+  ——名稱因此不可能被當成檔案路徑，杜絕路徑穿越；名稱上限 60 字元、上限 50 組；
+  檔案損毀或個別項目不合法時只略過壞掉的部分（壞掉的預設不該讓人開不了節目）。
+- **設定持久化**：`save_user_settings()`（`backend/app/config.py`）把版面與樣式寫回
+  `config/user.yaml`；`serve.py` 預設讀同一個檔。**沒有發明新機制**——user.yaml 本來就是
+  `runtime > user > default` 的使用者層，只是以前只能手改。三個刻意行為：
+  1. 寫檔前跑既有 secret 欄位檢查，**API key 絕不落地**（有測試斷言檔內不含 key 也不含 `api_key`）。
+  2. `user.yaml` 解析失敗時**拒絕覆寫**，不銷毀使用者可能還想修好的設定。
+  3. 寫檔失敗（唯讀／路徑不存在）**不影響設定變更本身**，持久化不該讓直播中的調整失敗。
+- **音訊裝置選擇刻意不持久化**（有測試明確斷言），理由見 §0 第 2 點。
+
+實測（2026-08-10）：改設定 → 殺掉後端 → 重新啟動 → `chars_per_line 12 / max_lines 4 /
+font kai / size 64 / color #FFCC00 / scroll false / scroll_ms 400` 七項全部還原。
+
+| Gate | 結果 |
+|---|---:|
+| `PYTHONPATH='' uv run pytest -W error -q` | **414 passed** |
+| `uv run ruff check backend` | 通過 |
+| `uv run mypy backend/app` | 58 source files，無問題 |
+| `npm run test` | 15 files / **89 passed** |
+| `npm run build` | 通過 |
 
 ### ⏳ 待辦：v0.1 驗收剩餘項目（使用者有空時執行）
 
@@ -184,7 +241,9 @@ INPUT_DEVICE XOR WASAPI_LOOPBACK   （不得混音／同時持有兩種 source�
 
 ---
 
-## 4. ⚠️ 待辦（接手者下一步——依此繼續）
+## 4. Stage 2 review 與 smoke 歷程（存查，非待辦）
+
+> 下一步請看 §0；本節保留 Stage 2 的 review／修正紀錄以便回溯決策。
 
 **狀態：第三輪 independent fail-closed review（deleg_031e460b）已 **PASSED**：
 `{"passed": true, "security_concerns": [], "logic_errors": [], "suggestions": [...]}`。**
@@ -265,8 +324,10 @@ PYTHONPATH='' .venv/Scripts/externaltranslate-audio-devices.exe
 
 1. `cd C:\Users\razer\Documents\HermesWorkspace\ExternalTranslate`
 2. 重讀 `AGENTS.md`、`BUILD.md`、`PLAN.md`、`status.md`、`.hermes/plans/2026-08-02-stage-2-gemini-live.md`。
-3. `git status --short --branch` 確認 working tree（目前 clean，`main` 與 `origin/main` 同步於 `6691416`）。
-4. 從 §4 依序修 blocking 問題（TDD：先 RED 後 GREEN）。
-5. 跑 §4.4 的完整 gates。
-6. 派新一輪 independent fail-closed review。
-7. review 通過後安排真實 smoke，再交使用者驗收與 commit/push 授權。
+3. `git status --short --branch` 確認 working tree（Stage 4.1 commit 後為 clean；
+   `main` 領先 `origin/main`，push 需使用者授權）。
+4. 依 §0 的 Next Action 繼續；不得自行決定 §0 第 2 點。
+5. 動程式一律 TDD（先 RED 後 GREEN），完成後跑完整 gates：
+   `PYTHONPATH='' uv run pytest -W error -q`、`uv run ruff check backend`、
+   `uv run mypy backend/app`、`npm run test`、`npm run build`。
+6. 需要時派 independent fail-closed review，再安排真實 smoke 與使用者驗收。
