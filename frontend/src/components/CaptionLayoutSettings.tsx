@@ -10,6 +10,8 @@ interface CaptionLayoutSettingsProps {
 
 export const CHARS_PER_LINE_RANGE = [4, 60] as const;
 export const MAX_LINES_RANGE = [1, 10] as const;
+/** 0 is "never"; anything between 0 and the floor would cut sentences apart. */
+export const IDLE_RESET_MS_RANGE = [500, 30000] as const;
 
 /**
  * Caption layout is adjustable while translating: taking captions off air to
@@ -22,22 +24,30 @@ export function CaptionLayoutSettings({
 }: CaptionLayoutSettingsProps) {
   const [chars, setChars] = useState(String(layout.chars_per_line));
   const [lines, setLines] = useState(String(layout.max_lines));
+  const [idle, setIdle] = useState(String(layout.idle_reset_ms));
 
   // The server is the source of truth: adopt whatever it reports, including
   // a value it corrected or another client changed.
   useEffect(() => {
     setChars(String(layout.chars_per_line));
     setLines(String(layout.max_lines));
-  }, [layout.chars_per_line, layout.max_lines]);
+    setIdle(String(layout.idle_reset_ms));
+  }, [layout.chars_per_line, layout.max_lines, layout.idle_reset_ms]);
 
   const commit = (
     nextChars: string,
     nextLines: string,
     sentenceBreaks: boolean = layout.sentence_breaks,
+    nextIdle: string = idle,
   ): void => {
     const parsedChars = Number(nextChars);
     const parsedLines = Number(nextLines);
-    if (!Number.isInteger(parsedChars) || !Number.isInteger(parsedLines)) {
+    const parsedIdle = Number(nextIdle);
+    if (
+      !Number.isInteger(parsedChars) ||
+      !Number.isInteger(parsedLines) ||
+      !Number.isInteger(parsedIdle)
+    ) {
       return;
     }
     if (
@@ -48,10 +58,19 @@ export function CaptionLayoutSettings({
     ) {
       return;
     }
+    // 0 is off; between 0 and the floor the server refuses, so do not send it
+    // and leave the field as typed rather than snapping it to something else.
+    if (
+      parsedIdle !== 0 &&
+      (parsedIdle < IDLE_RESET_MS_RANGE[0] || parsedIdle > IDLE_RESET_MS_RANGE[1])
+    ) {
+      return;
+    }
     onChange({
       chars_per_line: parsedChars,
       max_lines: parsedLines,
       sentence_breaks: sentenceBreaks,
+      idle_reset_ms: parsedIdle,
     });
   };
 
@@ -99,6 +118,27 @@ export function CaptionLayoutSettings({
         </label>
       </div>
       <p className="panel__note">{zhTW.captionLayout.sentenceBreaksHint}</p>
+
+      <div className="field-row">
+        <label htmlFor="idle-reset-ms">{zhTW.captionLayout.idleReset}</label>
+        <input
+          id="idle-reset-ms"
+          type="number"
+          inputMode="numeric"
+          min={0}
+          max={IDLE_RESET_MS_RANGE[1]}
+          step={500}
+          value={idle}
+          onChange={(event) => {
+            setIdle(event.target.value);
+            commit(chars, lines, layout.sentence_breaks, event.target.value);
+          }}
+        />
+        {layout.idle_reset_ms === 0 ? (
+          <span className="panel__note">{zhTW.captionLayout.idleResetOff}</span>
+        ) : null}
+      </div>
+      <p className="panel__note">{zhTW.captionLayout.idleResetHint}</p>
     </section>
   );
 }

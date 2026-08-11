@@ -8,6 +8,7 @@ from typing import Any
 from backend.app.config import (
     CAPTION_STYLE_FIELDS,
     CHARS_PER_LINE_RANGE,
+    IDLE_RESET_MS_RANGE,
     MAX_LINES_RANGE,
 )
 
@@ -40,6 +41,7 @@ class CaptionPreset:
     scroll: bool
     scroll_ms: int
     sentence_breaks: bool = True
+    idle_reset_ms: int = 0
     weight: str = "normal"
     outline_width: int = 0
     outline_color: str = "#000000"
@@ -63,6 +65,10 @@ def _validate(preset: CaptionPreset) -> None:
         raise PresetError("行數超出允許範圍。")
     if not isinstance(preset.sentence_breaks, bool):
         raise PresetError("句尾換行設定必須是 boolean。")
+    if preset.idle_reset_ms != 0 and not _in_range(
+        preset.idle_reset_ms, IDLE_RESET_MS_RANGE
+    ):
+        raise PresetError("停頓清空時間超出允許範圍。")
     # Appearance is checked against the same spec the settings API uses, so a
     # preset can never carry a value the runtime would refuse to apply.
     for field in CAPTION_STYLE_FIELDS:

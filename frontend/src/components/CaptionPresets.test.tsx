@@ -11,6 +11,7 @@ const PRESET: CaptionPreset = {
   chars_per_line: 10,
   max_lines: 3,
   sentence_breaks: true,
+  idle_reset_ms: 0,
   font: "kai",
   size: 72,
   color: "#FFCC00",

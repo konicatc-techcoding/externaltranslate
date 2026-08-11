@@ -81,6 +81,7 @@ def test_saving_captures_the_settings_in_force(client: TestClient) -> None:
         "chars_per_line": 10,
         "max_lines": 3,
         "sentence_breaks": True,
+        "idle_reset_ms": 0,
         **SHOW_STYLE,
     }
 

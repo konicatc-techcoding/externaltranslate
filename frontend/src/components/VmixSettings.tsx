@@ -45,6 +45,11 @@ export function VmixSettings({
   // as it is typed and the field can never be cleared.
   const [host, setHost] = useState(settings.host);
   const [port, setPort] = useState(String(settings.port));
+  // Turning the output off while translating takes the captions off air the
+  // moment it is sent, so it is asked about first. Inline rather than
+  // `window.confirm`: a modal that steals focus mid-show is worse than the
+  // mistake it prevents.
+  const [confirmingDisable, setConfirmingDisable] = useState(false);
 
   useEffect(() => {
     setHost(settings.host);
@@ -84,6 +89,16 @@ export function VmixSettings({
     }
   };
 
+  const toggleEnabled = (checked: boolean): void => {
+    // Only the off direction, and only on air: with nothing running there is
+    // no caption to remove, and a prompt would just be in the way.
+    if (!checked && running) {
+      setConfirmingDisable(true);
+      return;
+    }
+    onChange({ enabled: checked });
+  };
+
   const isRemote = !LOOPBACK.has(settings.host);
   const mismatch = settings.fields.length < maxLines;
 
@@ -98,12 +113,30 @@ export function VmixSettings({
         </p>
       ) : null}
 
+      {confirmingDisable ? (
+        <div role="alertdialog" aria-label={zhTW.vmix.disableTitle} className="panel__notice">
+          <p>{zhTW.vmix.disableConfirm}</p>
+          <button
+            type="button"
+            onClick={() => {
+              setConfirmingDisable(false);
+              onChange({ enabled: false });
+            }}
+          >
+            {zhTW.vmix.disableAccept}
+          </button>
+          <button type="button" onClick={() => setConfirmingDisable(false)}>
+            {zhTW.vmix.disableCancel}
+          </button>
+        </div>
+      ) : null}
+
       <div className="field-row">
         <label>
           <input
             type="checkbox"
             checked={settings.enabled}
-            onChange={(event) => onChange({ enabled: event.target.checked })}
+            onChange={(event) => toggleEnabled(event.target.checked)}
           />
           {zhTW.vmix.enabled}
         </label>

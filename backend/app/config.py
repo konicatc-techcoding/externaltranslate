@@ -44,6 +44,7 @@ _CAPTION_LAYOUT_KEYS = {
     "chars_per_line",
     "max_lines",
     "sentence_breaks",
+    "idle_reset_ms",
 }
 
 # Display layout bounds; a caption narrower than 4 full-width characters or
@@ -55,6 +56,15 @@ DEFAULT_MAX_LINES = 2
 # On by default: sentences running into each other is not something anyone
 # configured, it is just what happened before the rule existed.
 DEFAULT_SENTENCE_BREAKS = True
+
+# How long a gap in the translated text ends the caption, so the next one
+# starts on the first line instead of continuing to slide. 0 is off, and is
+# the default: dropping text on a pause is a visible behaviour change and an
+# upgrade should not make it on the operator's behalf. Below half a second a
+# threshold would fire between fragments of one sentence; above thirty the
+# gap is longer than any pause a speaker takes.
+IDLE_RESET_MS_RANGE = (500, 30_000)
+DEFAULT_IDLE_RESET_MS = 0
 
 # Font choices are a closed whitelist: the playout machine must have the font
 # installed or the browser silently falls back, which looks like the setting
@@ -511,6 +521,12 @@ def _validate_caption_settings(settings: Settings) -> None:
     ):
         raise ConfigurationError("caption.sentence_breaks 必須是 boolean。")
 
+    if "idle_reset_ms" in caption and not _is_idle_reset(caption["idle_reset_ms"]):
+        raise ConfigurationError(
+            f"caption.idle_reset_ms 必須是 0（關閉）或 {IDLE_RESET_MS_RANGE[0]} 到 "
+            f"{IDLE_RESET_MS_RANGE[1]} 之間的整數。"
+        )
+
     _validate_caption_style(caption)
 
 
@@ -663,6 +679,20 @@ def caption_sentence_breaks(settings: Mapping[str, Any]) -> bool:
     """Whether a sentence ending near the line edge starts a new line."""
     caption = settings.get("caption") or {}
     return bool(caption.get("sentence_breaks", DEFAULT_SENTENCE_BREAKS))
+
+
+def _is_idle_reset(value: Any) -> bool:
+    return _is_bounded_int(value, minimum=0, maximum=0) or _is_bounded_int(
+        value,
+        minimum=IDLE_RESET_MS_RANGE[0],
+        maximum=IDLE_RESET_MS_RANGE[1],
+    )
+
+
+def caption_idle_reset_ms(settings: Mapping[str, Any]) -> int:
+    """How long a gap ends the caption, in milliseconds; 0 means never."""
+    caption = settings.get("caption") or {}
+    return int(caption.get("idle_reset_ms", DEFAULT_IDLE_RESET_MS))
 
 
 def caption_layout(settings: Mapping[str, Any]) -> tuple[int, int]:

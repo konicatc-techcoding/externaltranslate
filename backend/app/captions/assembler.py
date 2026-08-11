@@ -12,6 +12,9 @@ from backend.app.translation.models import TranslationEvent, TranslationEventKin
 DEFAULT_CHARS_PER_LINE = 20
 DEFAULT_MAX_LINES = 2
 DEFAULT_SENTENCE_BREAKS = True
+# Off unless the operator asks for it: dropping text on a pause is a visible
+# change in behaviour, and an upgrade should not introduce one by itself.
+DEFAULT_IDLE_RESET_MS = 0
 
 _Now = Callable[[], float]
 
@@ -42,6 +45,16 @@ class CaptionAssembler:
     ``chars_per_line`` full-width characters and windowed to the most recent
     ``max_lines``. Wrapping lives here rather than in each consumer so the web
     overlay and the vMix GT title cannot disagree about where a line breaks.
+
+    ``idle_reset_ms`` ends the caption after a gap in the speech, so the next
+    one starts on the first line. Once the window is full it slides forever,
+    which puts every new word on the bottom line and turns the lines above it
+    into text the viewer has already read; a caption that starts at the top
+    and fills downward is the readable arrangement, and without this it only
+    ever happens once per run. The reset is armed rather than applied: the
+    screen keeps the old caption until there is a new one to replace it,
+    because a caption blanking itself mid-event reads as the translation
+    having stopped.
     """
 
     def __init__(
@@ -51,12 +64,14 @@ class CaptionAssembler:
         chars_per_line: int = DEFAULT_CHARS_PER_LINE,
         max_lines: int = DEFAULT_MAX_LINES,
         sentence_breaks: bool = DEFAULT_SENTENCE_BREAKS,
+        idle_reset_ms: int = DEFAULT_IDLE_RESET_MS,
         now: _Now | None = None,
     ) -> None:
         self._max_payload_length = max_payload_length
         self._chars_per_line = chars_per_line
         self._max_lines = max_lines
         self._sentence_breaks = sentence_breaks
+        self._idle_reset_ms = idle_reset_ms
         self._now = now or time.monotonic
         self._state = CaptionState.initial()
 
@@ -77,6 +92,7 @@ class CaptionAssembler:
         chars_per_line: int,
         max_lines: int,
         sentence_breaks: bool = DEFAULT_SENTENCE_BREAKS,
+        idle_reset_ms: int = DEFAULT_IDLE_RESET_MS,
     ) -> CaptionState:
         """Re-flow the current caption for a new layout, without interrupting.
 
@@ -88,6 +104,7 @@ class CaptionAssembler:
         self._chars_per_line = chars_per_line
         self._max_lines = max_lines
         self._sentence_breaks = sentence_breaks
+        self._idle_reset_ms = idle_reset_ms
         state = self._state
         self._state = CaptionState(
             revision=state.revision + 1,
@@ -140,6 +157,8 @@ class CaptionAssembler:
         # A confirmed final closes its caption, so the next fragment opens a
         # new one instead of extending finished text.
         pending = "" if state.status is not CaptionStatus.PARTIAL else state.text
+        if pending and self._is_idle_reset_due(state.updated_at):
+            pending = ""
         if not pending and not fragment.strip():
             return None  # never open a caption with whitespace alone
         text = (pending + fragment)[-self._max_payload_length :]
@@ -155,6 +174,17 @@ class CaptionAssembler:
         )
         self._state = next_state
         return next_state
+
+    def _is_idle_reset_due(self, last_update: float) -> bool:
+        """Whether the gap before this fragment ends the previous caption.
+
+        Measured from the last fragment rather than from the audio: translated
+        text arrives a second or two behind the speech, so audio silence would
+        cut off a sentence still being delivered.
+        """
+        if self._idle_reset_ms <= 0:
+            return False
+        return self._now() - last_update >= self._idle_reset_ms / 1000
 
     def _clear_unconfirmed(self, *, increment_generation: bool) -> CaptionState | None:
         state = self._state

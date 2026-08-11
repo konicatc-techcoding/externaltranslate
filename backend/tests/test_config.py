@@ -499,3 +499,40 @@ def test_caption_style_accepts_a_whole_valid_set(tmp_path: Path) -> None:
     # An integer 0 is a valid opacity, and must not be rejected as "not a float".
     assert style["background_opacity"] == 0
     assert style["outline_color"] == "#101010"
+
+
+@pytest.mark.parametrize("value", [0, 500, 2500, 30000])
+def test_load_settings_accepts_a_valid_idle_reset(tmp_path: Path, value: int) -> None:
+    from backend.app.config import caption_idle_reset_ms
+
+    default_path = tmp_path / "default.yaml"
+    default_path.write_text(
+        f"caption:\n  max_payload_length: 4096\n  idle_reset_ms: {value}\n",
+        encoding="utf-8",
+    )
+
+    settings = load_settings(default_path)
+
+    assert caption_idle_reset_ms(settings) == value
+
+
+@pytest.mark.parametrize("value", [1, 499, 30001, '"2500"', "true"])
+def test_load_settings_rejects_an_idle_reset_out_of_range(
+    tmp_path: Path, value: object
+) -> None:
+    # 0 means off; anything between 0 and the floor is a threshold so short it
+    # would cut sentences apart, which is worse than not having the feature.
+    default_path = tmp_path / "default.yaml"
+    default_path.write_text(
+        f"caption:\n  max_payload_length: 4096\n  idle_reset_ms: {value}\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigurationError, match="caption.idle_reset_ms"):
+        load_settings(default_path)
+
+
+def test_caption_idle_reset_defaults_to_off() -> None:
+    from backend.app.config import caption_idle_reset_ms
+
+    assert caption_idle_reset_ms({}) == 0

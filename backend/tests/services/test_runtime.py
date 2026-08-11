@@ -413,7 +413,9 @@ def test_caption_settings_persist_for_the_next_start(tmp_path: Any) -> None:
     user_settings = tmp_path / "user.yaml"
     runtime, _created, _provider = _runtime(user_settings_path=user_settings)
 
-    runtime.update_caption_layout(chars_per_line=12, max_lines=4, sentence_breaks=True)
+    runtime.update_caption_layout(
+        chars_per_line=12, max_lines=4, sentence_breaks=True, idle_reset_ms=2500
+    )
     runtime.update_caption_style(
         {
             "font": "kai",
@@ -438,6 +440,7 @@ def test_caption_settings_persist_for_the_next_start(tmp_path: Any) -> None:
     assert stored["caption"]["scroll_ms"] == 400
     assert stored["caption"]["outline_width"] == 4
     assert stored["caption"]["align"] == "center"
+    assert stored["caption"]["idle_reset_ms"] == 2500
 
 
 def test_persistence_never_writes_the_api_key(tmp_path: Any) -> None:

@@ -26,7 +26,13 @@ export function captionSummary(
 ): string {
   const font = FONT_LABELS[style.font] ?? style.font;
   const outline = style.outline_width > 0 ? `・描邊 ${style.outline_width}` : "";
-  return `${layout.chars_per_line} 字 ${layout.max_lines} 行・${font} ${style.size}px${outline}`;
+  // Worth a place in the summary: it is the one layout setting that makes the
+  // caption drop text on its own, and a folded panel should say so.
+  const idle =
+    layout.idle_reset_ms > 0
+      ? `・停頓 ${layout.idle_reset_ms / 1000} 秒重來`
+      : "";
+  return `${layout.chars_per_line} 字 ${layout.max_lines} 行${idle}・${font} ${style.size}px${outline}`;
 }
 
 /**

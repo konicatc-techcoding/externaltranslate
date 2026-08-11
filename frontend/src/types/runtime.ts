@@ -39,6 +39,11 @@ export interface CaptionLayout {
   max_lines: number;
   /** A sentence ending near the line edge starts the next one on a new line. */
   sentence_breaks: boolean;
+  /**
+   * A gap this long in the translated text ends the caption, so the next one
+   * starts on the first line instead of sliding. 0 means never.
+   */
+  idle_reset_ms: number;
 }
 
 export interface CaptionStyle {
@@ -161,6 +166,7 @@ export interface AppSettings {
   caption_chars_per_line: number;
   caption_max_lines: number;
   caption_sentence_breaks: boolean;
+  caption_idle_reset_ms: number;
   caption_style: CaptionStyle;
   vmix: VmixSettings;
   ui: { collapsed: string[] };
@@ -178,7 +184,12 @@ export interface CredentialTestResult {
 
 export const IDLE_RUNTIME_STATUS: RuntimeStatus = {
   running: false,
-  layout: { chars_per_line: 20, max_lines: 2, sentence_breaks: true },
+  layout: {
+    chars_per_line: 20,
+    max_lines: 2,
+    sentence_breaks: true,
+    idle_reset_ms: 0,
+  },
   style: DEFAULT_CAPTION_STYLE,
   elapsed_seconds: 0,
   status_revision: 0,
@@ -203,4 +214,5 @@ export interface CaptionPreset extends CaptionStyle {
   chars_per_line: number;
   max_lines: number;
   sentence_breaks: boolean;
+  idle_reset_ms: number;
 }

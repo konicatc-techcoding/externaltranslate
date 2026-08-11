@@ -59,7 +59,12 @@ export function CaptionPresets({
             <li key={preset.name}>
               <span className="preset-list__name">{preset.name}</span>
               <span className="preset-list__detail">
-                {`${preset.chars_per_line}字 × ${preset.max_lines}行 · ${preset.size}px · ${preset.color}`}
+                {`${preset.chars_per_line}字 × ${preset.max_lines}行 · ${preset.size}px · ${preset.color}` +
+                  // Applying a preset also sets this, including back to off,
+                  // so the row has to say what it carries.
+                  (preset.idle_reset_ms > 0
+                    ? ` · 停頓 ${preset.idle_reset_ms / 1000} 秒重來`
+                    : "")}
               </span>
               <button type="button" onClick={() => onApply(preset.name)}>
                 {zhTW.presets.apply}

@@ -15,6 +15,9 @@ caption:
   # A sentence ending with less than 4 full-width characters of room left
   # starts the next one on a new line.
   sentence_breaks: true
+  # A gap this long in the translated text ends the caption, so the next one
+  # starts on the first line instead of sliding. 0 is off; 500–30000 otherwise.
+  idle_reset_ms: 0
   font: jhenghei
   size: 48
   weight: normal

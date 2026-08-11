@@ -126,6 +126,7 @@ def test_settings_expose_only_non_secret_fields(client: TestClient) -> None:
         "caption_chars_per_line": 20,
         "caption_max_lines": 2,
         "caption_sentence_breaks": True,
+        "caption_idle_reset_ms": 0,
         "caption_style": DEFAULT_STYLE,
         "vmix": {
             "enabled": False,
@@ -302,4 +303,41 @@ def test_sentence_breaks_can_be_turned_off_through_the_api(
         "chars_per_line": 20,
         "max_lines": 2,
         "sentence_breaks": False,
+        "idle_reset_ms": 0,
     }
+
+
+def test_the_idle_reset_can_be_set_through_the_api(client: TestClient) -> None:
+    response = client.put(
+        "/api/settings/caption-layout",
+        json={"chars_per_line": 20, "max_lines": 5, "idle_reset_ms": 2500},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["caption_idle_reset_ms"] == 2500
+    # It decides what the caption contains, so an overlay has to see it too.
+    assert client.get("/api/pipeline/status").json()["layout"]["idle_reset_ms"] == 2500
+
+
+@pytest.mark.parametrize("value", [1, 499, 30_001, -1])
+def test_an_idle_reset_between_off_and_the_floor_is_refused(
+    client: TestClient, value: int
+) -> None:
+    response = client.put(
+        "/api/settings/caption-layout",
+        json={"chars_per_line": 20, "max_lines": 2, "idle_reset_ms": value},
+    )
+
+    assert response.status_code == 422
+    assert client.get("/api/settings").json()["caption_idle_reset_ms"] == 0
+
+
+def test_omitting_the_idle_reset_leaves_it_off(client: TestClient) -> None:
+    # The panel predates this field; a client that does not send it must not
+    # have the caption start clearing itself.
+    response = client.put(
+        "/api/settings/caption-layout", json={"chars_per_line": 20, "max_lines": 2}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["caption_idle_reset_ms"] == 0

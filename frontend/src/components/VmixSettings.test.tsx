@@ -202,3 +202,49 @@ describe("主機與連接埠輸入", () => {
     expect(onChange).toHaveBeenLastCalledWith({ host: "192.168.1.50" });
   });
 });
+
+describe("停用 vMix 輸出", () => {
+  it("翻譯中要先確認，因為那是把字幕從畫面上拿掉", async () => {
+    const user = userEvent.setup();
+    const onChange = renderPanel({ enabled: true }, { running: true });
+
+    await user.click(screen.getByLabelText("啟用 vMix 輸出"));
+
+    // Not sent yet: the operator has to say so.
+    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.getByText(/確定要停止/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "確定停用" }));
+
+    expect(onChange).toHaveBeenLastCalledWith({ enabled: false });
+  });
+
+  it("取消確認後什麼都不送出", async () => {
+    const user = userEvent.setup();
+    const onChange = renderPanel({ enabled: true }, { running: true });
+
+    await user.click(screen.getByLabelText("啟用 vMix 輸出"));
+    await user.click(screen.getByRole("button", { name: "取消" }));
+
+    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.queryByText(/確定要停止/)).not.toBeInTheDocument();
+  });
+
+  it("沒在翻譯時直接停用，畫面上本來就沒有字幕", async () => {
+    const user = userEvent.setup();
+    const onChange = renderPanel({ enabled: true }, { running: false });
+
+    await user.click(screen.getByLabelText("啟用 vMix 輸出"));
+
+    expect(onChange).toHaveBeenLastCalledWith({ enabled: false });
+  });
+
+  it("啟用不需要確認", async () => {
+    const user = userEvent.setup();
+    const onChange = renderPanel({ enabled: false }, { running: true });
+
+    await user.click(screen.getByLabelText("啟用 vMix 輸出"));
+
+    expect(onChange).toHaveBeenLastCalledWith({ enabled: true });
+  });
+});

@@ -26,6 +26,7 @@ def runtime_status_response(snapshot: RuntimeSnapshot) -> RuntimeStatusResponse:
             chars_per_line=snapshot.layout[0],
             max_lines=snapshot.layout[1],
             sentence_breaks=snapshot.sentence_breaks,
+            idle_reset_ms=snapshot.idle_reset_ms,
         ),
         style=CaptionStyle(**snapshot.style),
         elapsed_seconds=snapshot.elapsed_seconds,

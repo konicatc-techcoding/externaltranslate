@@ -78,6 +78,42 @@ class FakeProvider:
             await session.close()
 
 
+class QueueSession:
+    """A session the test feeds one caption at a time."""
+
+    def __init__(self, queue: asyncio.Queue[TranslationEvent | None]) -> None:
+        self._queue = queue
+
+    async def send_audio(self, pcm_chunk: bytes) -> None:
+        del pcm_chunk
+
+    async def receive_events(self) -> AsyncIterator[TranslationEvent]:
+        while True:
+            event = await self._queue.get()
+            if event is None:
+                return
+            yield event
+
+    async def close(self) -> None:
+        await self._queue.put(None)
+
+
+class QueueProvider:
+    def __init__(self) -> None:
+        self.queue: asyncio.Queue[TranslationEvent | None] = asyncio.Queue()
+
+    def push(self, text: str) -> None:
+        self.queue.put_nowait(_caption(text))
+
+    @asynccontextmanager
+    async def connect(self) -> AsyncIterator[QueueSession]:
+        session = QueueSession(self.queue)
+        try:
+            yield session
+        finally:
+            await session.close()
+
+
 def _caption(text: str) -> TranslationEvent:
     return TranslationEvent(
         kind=TranslationEventKind.OUTPUT_TRANSCRIPTION,
@@ -118,12 +154,16 @@ def _settings(server: FakeVmix | None, *, enabled: bool, guid: str) -> dict[str,
 
 
 def _runtime(
-    settings: Mapping[str, Any], *, user_settings_path: Path | None = None
+    settings: Mapping[str, Any],
+    *,
+    user_settings_path: Path | None = None,
+    provider: Any = None,
 ) -> PipelineRuntime:
+    used = provider if provider is not None else FakeProvider([_caption("你好嗎")])
     return PipelineRuntime(
         settings,
         source_factory=lambda _settings: FakeSource(),
-        provider_factory=lambda **_kwargs: FakeProvider([_caption("你好嗎")]),
+        provider_factory=lambda **_kwargs: used,
         user_settings_path=user_settings_path,
         device_lister=lambda: [],
         loopback_lister=lambda: [],
@@ -322,6 +362,76 @@ def test_the_status_detail_never_carries_caption_text() -> None:
     asyncio.run(scenario())
 
 
+def test_turning_the_output_off_mid_run_blanks_the_title_and_stops_sending() -> None:
+    # The switch is an on-air action: "take the captions off the title", not
+    # "do that next time I start". Leaving the last sentence frozen there while
+    # the checkbox reads off is the control page lying about what is on screen.
+    async def scenario() -> None:
+        with FakeVmix([_TITLE]) as server:
+            provider = QueueProvider()
+            runtime = _runtime(
+                _settings(server, enabled=True, guid=_TITLE.guid), provider=provider
+            )
+            runtime.set_api_key("secret-api-key-value")
+            await runtime.start()
+            provider.push("你好嗎")
+            await _until(lambda: any(call.value == "你好嗎" for call in server.calls))
+
+            await runtime.set_vmix_enabled(False)
+            blanked = [call.value for call in server.calls[-2:]]
+            settled = len(server.calls)
+
+            provider.push("繼續說話")
+            await _until(lambda: "繼續說話" in runtime.snapshot().caption.text)
+            await asyncio.sleep(0.15)
+            after = len(server.calls)
+            await runtime.stop()
+
+        assert blanked == ["", ""]
+        assert after == settled  # nothing more reached vMix
+
+    asyncio.run(scenario())
+
+
+def test_turning_the_output_back_on_mid_run_resumes_sending() -> None:
+    # Otherwise the lie just moves: the box is ticked and nothing arrives.
+    async def scenario() -> None:
+        with FakeVmix([_TITLE]) as server:
+            provider = QueueProvider()
+            runtime = _runtime(
+                _settings(server, enabled=False, guid=_TITLE.guid), provider=provider
+            )
+            runtime.set_api_key("secret-api-key-value")
+            await runtime.start()
+            provider.push("先不送")
+            await _until(lambda: "先不送" in runtime.snapshot().caption.text)
+            assert server.calls == []
+
+            await runtime.set_vmix_enabled(True)
+            provider.push("現在要送")
+            await _until(
+                lambda: any("現在要送" in call.value for call in server.calls)
+            )
+            await runtime.stop()
+
+    asyncio.run(scenario())
+
+
+def test_toggling_while_stopped_only_records_the_setting() -> None:
+    async def scenario() -> None:
+        with FakeVmix([_TITLE]) as server:
+            runtime = _runtime(_settings(server, enabled=False, guid=_TITLE.guid))
+
+            await runtime.set_vmix_enabled(True)
+            await runtime.set_vmix_enabled(False)
+
+            calls = list(server.calls)
+
+        assert calls == []
+
+    asyncio.run(scenario())
+
+
 def test_vmix_settings_are_persisted(tmp_path: Path) -> None:
     user_settings = tmp_path / "user.yaml"
     with FakeVmix([_TITLE]) as server:
@@ -330,7 +440,7 @@ def test_vmix_settings_are_persisted(tmp_path: Path) -> None:
             user_settings_path=user_settings,
         )
         runtime.update_vmix_settings({"fields": ["A.Text", "B.Text", "C.Text"]})
-        runtime.set_vmix_enabled(True)
+        asyncio.run(runtime.set_vmix_enabled(True))
 
     stored = yaml.safe_load(user_settings.read_text(encoding="utf-8"))
     assert stored["vmix"]["fields"] == ["A.Text", "B.Text", "C.Text"]

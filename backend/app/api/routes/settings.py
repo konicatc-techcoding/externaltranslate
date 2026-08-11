@@ -16,6 +16,7 @@ from backend.app.api.models import (
     VmixSettingsUpdate,
 )
 from backend.app.config import (
+    caption_idle_reset_ms,
     caption_layout,
     caption_max_payload_length,
     caption_sentence_breaks,
@@ -44,6 +45,7 @@ def _to_response(settings: Any) -> SettingsResponse:
         caption_chars_per_line=caption_layout(settings)[0],
         caption_max_lines=caption_layout(settings)[1],
         caption_sentence_breaks=caption_sentence_breaks(settings),
+        caption_idle_reset_ms=caption_idle_reset_ms(settings),
         caption_style=CaptionStyle(**caption_style(settings)),
         vmix=VmixSettings(**vmix_settings(settings)),
         ui=UiSettings(**ui_settings(settings)),
@@ -92,6 +94,7 @@ def update_caption_layout(
             chars_per_line=payload.chars_per_line,
             max_lines=payload.max_lines,
             sentence_breaks=payload.sentence_breaks,
+            idle_reset_ms=payload.idle_reset_ms,
         )
     except RuntimeSelectionError as exc:
         raise HTTPException(
@@ -116,14 +119,15 @@ def update_caption_style(
 
 
 @router.put("/settings/vmix", response_model=SettingsResponse)
-def update_vmix(
+async def update_vmix(
     payload: VmixSettingsUpdate,
     runtime: Annotated[PipelineRuntime, Depends(get_runtime)],
 ) -> SettingsResponse:
     """Change the vMix target. Applies on the next start, not mid-run.
 
     Retargeting a live output would leave the previous title showing whatever
-    was on it, with nothing left to clear it.
+    was on it, with nothing left to clear it. `enabled` is the exception and
+    applies immediately — see `PipelineRuntime.set_vmix_enabled`.
     """
     # `exclude_unset`, not `exclude_none`: the panel clears the chosen input by
     # sending an explicit null, and `exclude_none` would drop it silently —
@@ -134,7 +138,7 @@ def update_vmix(
         if changes:
             runtime.update_vmix_settings(changes)
         if enabled is not None:
-            runtime.set_vmix_enabled(bool(enabled))
+            await runtime.set_vmix_enabled(bool(enabled))
     except RuntimeSelectionError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)

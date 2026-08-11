@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from backend.app.config import (
     CHARS_PER_LINE_RANGE,
+    IDLE_RESET_MS_RANGE,
     MAX_LINES_RANGE,
 )
 
@@ -145,6 +146,7 @@ class SettingsResponse(StrictModel):
     caption_chars_per_line: int
     caption_max_lines: int
     caption_sentence_breaks: bool
+    caption_idle_reset_ms: int
     caption_style: CaptionStyle
     vmix: VmixSettings
     ui: UiSettings
@@ -157,6 +159,9 @@ class CaptionLayoutUpdate(StrictModel):
     chars_per_line: int = Field(ge=CHARS_PER_LINE_RANGE[0], le=CHARS_PER_LINE_RANGE[1])
     max_lines: int = Field(ge=MAX_LINES_RANGE[0], le=MAX_LINES_RANGE[1])
     sentence_breaks: bool = True
+    #: 0 means off. The "off or in range" shape is checked by the runtime, so
+    #: only the outer bound is repeated here.
+    idle_reset_ms: int = Field(default=0, ge=0, le=IDLE_RESET_MS_RANGE[1])
 
 
 class CaptionStyleUpdate(CaptionStyle):
@@ -231,6 +236,9 @@ class CaptionLayout(StrictModel):
     max_lines: int
     #: A sentence ending near the line edge starts the next one on a new line.
     sentence_breaks: bool = True
+    #: A gap this long in the translated text ends the caption, so the next
+    #: one starts on the first line. 0 means never.
+    idle_reset_ms: int = 0
 
 
 class RuntimeStatusResponse(StrictModel):
@@ -259,6 +267,7 @@ class CaptionPresetItem(CaptionStyle):
     chars_per_line: int
     max_lines: int
     sentence_breaks: bool = True
+    idle_reset_ms: int = 0
 
 
 class CaptionPresetList(StrictModel):

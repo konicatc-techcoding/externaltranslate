@@ -30,9 +30,12 @@ from backend.app.captions.store import CaptionStore
 from backend.app.config import (
     CAPTION_STYLE_FIELDS,
     CHARS_PER_LINE_RANGE,
+    DEFAULT_IDLE_RESET_MS,
+    IDLE_RESET_MS_RANGE,
     MAX_LINES_RANGE,
     UI_PANEL_IDS,
     ConfigurationError,
+    caption_idle_reset_ms,
     caption_layout,
     caption_max_payload_length,
     caption_sentence_breaks,
@@ -100,6 +103,7 @@ class RuntimeSnapshot:
     elapsed_seconds: float
     layout: tuple[int, int]
     sentence_breaks: bool
+    idle_reset_ms: int
     style: dict[str, Any]
     audio_notice: str | None
     vmix_notice: str | None
@@ -208,6 +212,7 @@ class PipelineRuntime:
             chars_per_line=chars_per_line,
             max_lines=max_lines,
             sentence_breaks=caption_sentence_breaks(self._settings),
+            idle_reset_ms=caption_idle_reset_ms(self._settings),
         )
         self._caption_sink = CaptionEventSink(
             self._caption_assembler, self._caption_store
@@ -387,7 +392,12 @@ class PipelineRuntime:
         return self._audio_notice
 
     def update_caption_layout(
-        self, *, chars_per_line: int, max_lines: int, sentence_breaks: bool
+        self,
+        *,
+        chars_per_line: int,
+        max_lines: int,
+        sentence_breaks: bool,
+        idle_reset_ms: int = DEFAULT_IDLE_RESET_MS,
     ) -> None:
         """Change the display layout, re-flowing immediately.
 
@@ -405,17 +415,24 @@ class PipelineRuntime:
             raise RuntimeSelectionError(
                 f"行數必須介於 {low_lines} 到 {high_lines} 之間。"
             )
+        low_idle, high_idle = IDLE_RESET_MS_RANGE
+        if idle_reset_ms != 0 and not low_idle <= idle_reset_ms <= high_idle:
+            raise RuntimeSelectionError(
+                f"停頓清空時間必須是 0（關閉）或 {low_idle} 到 {high_idle} 毫秒之間。"
+            )
 
         caption = dict(self._settings.get("caption") or {})
         caption["chars_per_line"] = chars_per_line
         caption["max_lines"] = max_lines
         caption["sentence_breaks"] = sentence_breaks
+        caption["idle_reset_ms"] = idle_reset_ms
         self._settings["caption"] = caption
 
         state = self._caption_assembler.set_layout(
             chars_per_line=chars_per_line,
             max_lines=max_lines,
             sentence_breaks=sentence_breaks,
+            idle_reset_ms=idle_reset_ms,
         )
         self._caption_store.commit(state)
         self._persist_caption_settings()
@@ -457,6 +474,7 @@ class PipelineRuntime:
             chars_per_line=chars_per_line,
             max_lines=max_lines,
             sentence_breaks=caption_sentence_breaks(self._settings),
+            idle_reset_ms=caption_idle_reset_ms(self._settings),
             **caption_style(self._settings),
         )
 
@@ -472,6 +490,7 @@ class PipelineRuntime:
             chars_per_line=preset.chars_per_line,
             max_lines=preset.max_lines,
             sentence_breaks=preset.sentence_breaks,
+            idle_reset_ms=preset.idle_reset_ms,
         )
 
     def _persist_caption_settings(self) -> None:
@@ -492,6 +511,7 @@ class PipelineRuntime:
                 "chars_per_line": chars_per_line,
                 "max_lines": max_lines,
                 "sentence_breaks": caption_sentence_breaks(self._settings),
+                "idle_reset_ms": caption_idle_reset_ms(self._settings),
                 **caption_style(self._settings),
                 "max_payload_length": caption.get("max_payload_length", 4096),
             }
@@ -645,11 +665,30 @@ class PipelineRuntime:
             with suppress(ConfigurationError, OSError):
                 self._persist(path, {"ui": ui_settings(self._settings)})
 
-    def set_vmix_enabled(self, enabled: bool) -> None:
+    async def set_vmix_enabled(self, enabled: bool) -> None:
+        """Turn the vMix output on or off, taking effect immediately.
+
+        Unlike the host, input and field settings — which apply on the next
+        start, because retargeting a live output would leave the previous
+        title showing text nobody can clear — this switch acts now. Turning it
+        off during a show means "take the captions off the title", and a switch
+        that only takes effect next time would leave the last sentence frozen
+        on air while the control page shows the output as off.
+        """
         features = dict(self._settings.get("features") or {})
         features["vmix_output"] = enabled
         self._settings["features"] = features
         self._persist_vmix_settings()
+
+        if not self.running:
+            return
+        if enabled:
+            self._vmix_output = await self._open_vmix_output()
+        else:
+            # Blanks the fields on the way out; the caption sink reads
+            # `self._vmix_output` every time, so this is all it takes.
+            await self._close_vmix_output()
+            self._vmix_notice = None
 
     def _persist_vmix_settings(self) -> None:
         path = self._user_settings_path
@@ -751,7 +790,6 @@ class PipelineRuntime:
         # like output from this one.
         self._caption_store.commit(self._caption_assembler.reset())
         self._vmix_output = await self._open_vmix_output()
-        vmix_output = self._vmix_output
         caption_sink = self._caption_sink
         caption_store = self._caption_store
         publisher = self._status_publisher
@@ -761,10 +799,13 @@ class PipelineRuntime:
             await caption_sink(event)
             state = caption_store.snapshot()
             if state is not before:
+                # Read every time rather than captured once: the operator can
+                # switch the output on or off mid-run, and a captured
+                # reference would keep writing to the one they turned off.
                 # Never awaited and never allowed to raise: the caption path
                 # must not depend on vMix being reachable.
                 with suppress(Exception):
-                    vmix_output.publish(state.lines)
+                    self._vmix_output.publish(state.lines)
                 # Otherwise the control page shows caption_sink idle while
                 # captions are streaming.
                 publish_caption_status(publisher, state)
@@ -848,6 +889,7 @@ class PipelineRuntime:
             elapsed_seconds=self.elapsed_seconds,
             layout=caption_layout(self._settings),
             sentence_breaks=caption_sentence_breaks(self._settings),
+            idle_reset_ms=caption_idle_reset_ms(self._settings),
             style=caption_style(self._settings),
             running=self.running,
             status=self._status_store.snapshot(),

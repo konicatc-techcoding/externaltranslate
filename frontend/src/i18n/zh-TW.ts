@@ -82,6 +82,12 @@ export const zhTW = {
     sentenceBreaks: "句尾換行",
     sentenceBreaksHint:
       "句號、驚嘆號或問號結束時，若該行剩下不足 4 個全形字，下一句從新的一行開始。",
+    idleReset: "停頓後重新開始（毫秒）",
+    idleResetHint:
+      "停頓超過這個時間，下一句從第一行重新開始，不再往上捲動；0 為關閉。" +
+      "畫面在停頓期間不會變動，等到有新字幕才換掉，避免看起來像翻譯中斷。" +
+      "建議 2500 以上，太短會把一句話切成兩段。",
+    idleResetOff: "關閉",
   },
   captionStyle: {
     title: "字幕外觀",
@@ -119,6 +125,11 @@ export const zhTW = {
     noInput: "尚未選 input",
     note: "把後端斷好行的字幕送進 GT Title 的文字欄位；網頁 overlay 不受影響。",
     enabled: "啟用 vMix 輸出",
+    disableTitle: "停用 vMix 輸出",
+    disableConfirm:
+      "確定要停止送字幕到 vMix 嗎？GT Title 上的文字會立刻被清空，網頁 overlay 不受影響。",
+    disableAccept: "確定停用",
+    disableCancel: "取消",
     host: "vMix 主機",
     port: "連接埠",
     refresh: "從 vMix 讀取 input",

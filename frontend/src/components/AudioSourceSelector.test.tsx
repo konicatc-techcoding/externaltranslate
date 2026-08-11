@@ -40,6 +40,7 @@ function settings(overrides: Partial<AppSettings> = {}): AppSettings {
     caption_chars_per_line: 20,
     caption_max_lines: 2,
     caption_sentence_breaks: true,
+  caption_idle_reset_ms: 0,
     caption_style: DEFAULT_CAPTION_STYLE,
     vmix: DEFAULT_VMIX_SETTINGS,
     ui: { collapsed: [] },
