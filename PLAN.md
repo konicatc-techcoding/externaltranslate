@@ -796,6 +796,46 @@ Modify: README.md
 
 ---
 
+# 候選功能：字幕語言（2026-08-11 記錄，尚未列入任何 release）
+
+使用者 2026-08-11 詢問並決定**現在不做**，但要留給以後的版本考慮。這裡記的是需求成立時
+該從哪裡開始、以及會撞到什麼——不是承諾，**未經使用者指示不得動工**。
+
+## A. 換一種輸出語言（小）
+
+設定本身早就存在：`gemini.target_language_code`（BCP-47，已驗證）由
+`backend/app/translation/gemini_live.py` 直接餵進 Gemini 的 `translation_config`。
+缺的只是沒有拉到控制頁——`SettingsResponse` 沒有這個欄位，目前只能手改 YAML。
+
+**但接出設定不是主要工作，讓版面規則跟著語言走才是**：
+
+- `display_width()` 把 CJK 算兩欄，所以 `chars_per_line` 的語意是「全形字數」。換成
+  拉丁文字後同一個數字會裝進約兩倍的字元，面板上「每行字數」這個標籤就開始騙人。
+- 句尾換行只認全形 `。！？`；半形 `.` 是**刻意**排除的（「3.5 公里」「Mr. Chen」），
+  所以英文輸出等於沒有句尾換行。
+- 字型白名單只有中文字型（`jhenghei`／`kai`／`noto-sans-tc`）。
+- `externaltranslate-gemini-smoke` 的驗收條件硬性要求 `zh-Hant` 輸出，換語言會直接判失敗。
+
+做的時候必須連同上面四項一起處理，只把設定露出來會做出一個會騙人的欄位。
+
+## B. 同時輸出多種語言（一個 stage 的量）
+
+Gemini Live 的一個 session 只有一個 `target_language_code`，所以 N 種語言就是 N 個
+session。這與 Stage 2 立下並通過三輪 review 的不變式正面衝突：
+
+> AudioSource 只 start 一次、只 stop 一次；整個 pipeline 只有**一個** persistent PCM
+> reader，經容量 1 的 drop-oldest handoff 餵給當前 session。
+
+要多語言，那個 handoff 得改成扇出，且每個 session 各有自己的 rotation 與 backoff。
+往下每一層都要長出「語言」這個維度：`CaptionState` 與 store 變成一份一種語言、
+WebSocket payload 分流、`/overlay` 需要語言參數、vMix 需要 N 個 GT Title 或 N 組欄位。
+成本與速率限制也是 N 倍。
+
+**排程建議：若要做，排在 Stage 6 打包之前。** 理由與「打包排在 vMix 之後」相同——
+它會大幅改動執行期形狀，而 PyInstaller 最怕依賴與形狀變動；打包完再拆 pipeline 等於做兩次。
+
+---
+
 ## 4. 目前下一步
 
 Stage 0、Stage 1、Stage 1.2 與 Stage 2 已完成並通過驗證與發布：
