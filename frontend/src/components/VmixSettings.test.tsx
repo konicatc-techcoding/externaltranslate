@@ -32,6 +32,7 @@ function renderPanel(
       onChange={onChange}
       onRefresh={vi.fn()}
       onTest={vi.fn()}
+      onClearFields={vi.fn()}
       {...props}
     />,
   );
@@ -94,10 +95,25 @@ describe("VmixSettings", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
-  it("尚未選 input 時不能送測試文字", () => {
+  it("尚未選 input 時不能送測試字幕", () => {
     renderPanel({ input_guid: null });
 
-    expect(screen.getByRole("button", { name: "送出測試文字" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "送出測試字幕" })).toBeDisabled();
+  });
+
+  it("翻譯執行中不能測試，並說明原因", () => {
+    // The next caption would overwrite the test within one throttle window,
+    // so the result would say nothing about the wiring.
+    renderPanel({}, { running: true });
+
+    expect(screen.getByRole("button", { name: "送出測試字幕" })).toBeDisabled();
+    expect(screen.getByText("翻譯執行中無法測試")).toBeInTheDocument();
+  });
+
+  it("選好 input 後可以清空欄位", () => {
+    renderPanel({ input_guid: TITLE.guid });
+
+    expect(screen.getByRole("button", { name: "清空欄位" })).toBeEnabled();
   });
 
   it("顯示可貼進 Browser Input 的網址", () => {
@@ -116,5 +132,73 @@ describe("VmixSettings", () => {
 
   it("欄位名稱用 Line{n}.Text 慣例", () => {
     expect(generateFieldNames(2)).toEqual(["Line1.Text", "Line2.Text"]);
+  });
+});
+
+describe("主機與連接埠輸入", () => {
+  it("逐字輸入 IP 不會被吃掉，失焦才送出", async () => {
+    // "192." ends in a dot, which the server rejects. Committing per keystroke
+    // echoed the rejected value back and swallowed the character.
+    const user = userEvent.setup();
+    const onChange = renderPanel({ host: "127.0.0.1" });
+
+    const field = screen.getByLabelText("vMix 主機");
+    await user.clear(field);
+    await user.type(field, "192.168.1.50");
+
+    expect(field).toHaveValue("192.168.1.50");
+    expect(onChange).not.toHaveBeenCalled();
+
+    await user.tab();
+
+    expect(onChange).toHaveBeenLastCalledWith({ host: "192.168.1.50" });
+  });
+
+  it("清空主機欄位不會送出，失焦時還原生效值", async () => {
+    const user = userEvent.setup();
+    const onChange = renderPanel({ host: "127.0.0.1" });
+
+    const field = screen.getByLabelText("vMix 主機");
+    await user.clear(field);
+    await user.tab();
+
+    expect(onChange).not.toHaveBeenCalled();
+    expect(field).toHaveValue("127.0.0.1");
+  });
+
+  it("連接埠可以清空重打", async () => {
+    const user = userEvent.setup();
+    const onChange = renderPanel({ port: 8088 });
+
+    const field = screen.getByLabelText("連接埠");
+    await user.clear(field);
+    await user.type(field, "8099");
+    await user.tab();
+
+    expect(onChange).toHaveBeenLastCalledWith({ port: 8099 });
+  });
+
+  it("超出範圍的連接埠不送出，還原生效值", async () => {
+    const user = userEvent.setup();
+    const onChange = renderPanel({ port: 8088 });
+
+    const field = screen.getByLabelText("連接埠");
+    await user.clear(field);
+    await user.type(field, "99999");
+    await user.tab();
+
+    expect(onChange).not.toHaveBeenCalled();
+    expect(field).toHaveValue(8088);
+  });
+
+  it("按 Enter 也會送出", async () => {
+    const user = userEvent.setup();
+    const onChange = renderPanel({ host: "127.0.0.1" });
+
+    const field = screen.getByLabelText("vMix 主機");
+    await user.clear(field);
+    await user.type(field, "192.168.1.50{Enter}");
+
+    expect(onChange).toHaveBeenLastCalledWith({ host: "192.168.1.50" });
   });
 });

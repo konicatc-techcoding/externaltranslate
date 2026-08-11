@@ -137,6 +137,7 @@ def test_settings_expose_only_non_secret_fields(client: TestClient) -> None:
             "min_interval_ms": 200,
             "timeout_ms": 1000,
         },
+        "ui": {"collapsed": []},
         "session_rotation_seconds": 480,
     }
     assert "api_key" not in str(body).lower()

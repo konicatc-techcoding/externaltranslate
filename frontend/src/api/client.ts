@@ -92,16 +92,27 @@ export const api = {
 
   vmixInputs: () => request<{ inputs: VmixInputItem[] }>("/api/vmix/inputs"),
 
-  testVmix: (text: string) =>
-    request<{ message: string }>("/api/vmix/test", {
+  testVmix: (lines: string[] | null) =>
+    request<{ message: string; lines: string[] }>("/api/vmix/test", {
       method: "POST",
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ lines }),
+    }),
+
+  clearVmix: () =>
+    request<{ message: string; lines: string[] }>("/api/vmix/clear", {
+      method: "POST",
     }),
 
   updateVmixSettings: (update: Partial<VmixSettings>) =>
     request<AppSettings>("/api/settings/vmix", {
       method: "PUT",
       body: JSON.stringify(update),
+    }),
+
+  updateUiSettings: (collapsed: string[]) =>
+    request<AppSettings>("/api/settings/ui", {
+      method: "PUT",
+      body: JSON.stringify({ collapsed }),
     }),
 
   updateCaptionStyle: (style: CaptionStyle) =>

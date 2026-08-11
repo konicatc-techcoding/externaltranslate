@@ -1,21 +1,44 @@
+import { CollapsiblePanel } from "./CollapsiblePanel";
 import { zhTW } from "../i18n/zh-TW";
 import type { PrerequisiteItem } from "../types/runtime";
+
+/** Statuses that mean something the operator has to act on. */
+const BLOCKING = new Set(["missing"]);
 
 interface PrerequisitePanelProps {
   items: PrerequisiteItem[];
   busy?: boolean;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   onRefresh: () => void;
 }
 
 export function PrerequisitePanel({
   items,
   busy = false,
+  open,
+  onOpenChange,
   onRefresh,
 }: PrerequisitePanelProps) {
+  const problems = items.filter((item) => BLOCKING.has(item.status));
+  const summary =
+    items.length === 0
+      ? zhTW.prerequisites.notChecked
+      : problems.length > 0
+        ? zhTW.prerequisites.problems.replace("{count}", String(problems.length))
+        : zhTW.prerequisites.allReady;
+
   return (
-    <section className="panel" aria-labelledby="prerequisite-title">
-      <div className="panel__header">
-        <h2 id="prerequisite-title">{zhTW.prerequisites.title}</h2>
+    <CollapsiblePanel
+      title={zhTW.prerequisites.title}
+      summary={summary}
+      open={open}
+      onOpenChange={onOpenChange}
+      // Once everything is ready this is reference material, not a control.
+      // A missing prerequisite pops it back open.
+      openOnProblem={problems.length > 0}
+    >
+      <div className="field-row">
         <button type="button" onClick={onRefresh} disabled={busy}>
           {zhTW.prerequisites.refresh}
         </button>
@@ -37,6 +60,6 @@ export function PrerequisitePanel({
           </li>
         ))}
       </ul>
-    </section>
+    </CollapsiblePanel>
   );
 }

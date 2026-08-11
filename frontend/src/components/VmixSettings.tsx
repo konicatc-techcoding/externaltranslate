@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { zhTW } from "../i18n/zh-TW";
 import type { VmixInputItem, VmixSettings as VmixConfig } from "../types/runtime";
@@ -13,6 +13,9 @@ interface VmixSettingsProps {
   onChange: (update: Partial<VmixConfig>) => void;
   onRefresh: () => void;
   onTest: () => void;
+  onClearFields: () => void;
+  /** Testing while translating is refused: the next caption overwrites it. */
+  running?: boolean;
 }
 
 const LOOPBACK = new Set(["127.0.0.1", "localhost", "::1"]);
@@ -31,9 +34,22 @@ export function VmixSettings({
   onChange,
   onRefresh,
   onTest,
+  onClearFields,
+  running = false,
 }: VmixSettingsProps) {
   const [fieldText, setFieldText] = useState(settings.fields.join("\n"));
   const [copied, setCopied] = useState(false);
+  // Host and port are edited locally and sent on blur. Committing per
+  // keystroke means typing "192." is rejected — a host may not end in a dot —
+  // and the rejected value is echoed straight back, so the character vanishes
+  // as it is typed and the field can never be cleared.
+  const [host, setHost] = useState(settings.host);
+  const [port, setPort] = useState(String(settings.port));
+
+  useEffect(() => {
+    setHost(settings.host);
+    setPort(String(settings.port));
+  }, [settings.host, settings.port]);
 
   const commitFields = (raw: string): void => {
     const fields = raw
@@ -42,6 +58,29 @@ export function VmixSettings({
       .filter((line) => line.length > 0);
     if (fields.length > 0) {
       onChange({ fields });
+    }
+  };
+
+  const commitHost = (): void => {
+    const trimmed = host.trim();
+    if (trimmed === settings.host) {
+      return;
+    }
+    if (trimmed === "") {
+      setHost(settings.host); // nothing to send; put back what is in force
+      return;
+    }
+    onChange({ host: trimmed });
+  };
+
+  const commitPort = (): void => {
+    const value = Number(port);
+    if (!Number.isInteger(value) || value < 1 || value > 65535) {
+      setPort(String(settings.port));
+      return;
+    }
+    if (value !== settings.port) {
+      onChange({ port: value });
     }
   };
 
@@ -72,8 +111,14 @@ export function VmixSettings({
         <label htmlFor="vmix-host">{zhTW.vmix.host}</label>
         <input
           id="vmix-host"
-          value={settings.host}
-          onChange={(event) => onChange({ host: event.target.value.trim() })}
+          value={host}
+          onChange={(event) => setHost(event.target.value)}
+          onBlur={() => commitHost()}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              commitHost();
+            }
+          }}
         />
 
         <label htmlFor="vmix-port">{zhTW.vmix.port}</label>
@@ -82,11 +127,12 @@ export function VmixSettings({
           type="number"
           min={1}
           max={65535}
-          value={settings.port}
-          onChange={(event) => {
-            const port = Number(event.target.value);
-            if (Number.isInteger(port) && port >= 1 && port <= 65535) {
-              onChange({ port });
+          value={port}
+          onChange={(event) => setPort(event.target.value)}
+          onBlur={() => commitPort()}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              commitPort();
             }
           }}
         />
@@ -158,10 +204,25 @@ export function VmixSettings({
       ) : null}
 
       <div className="field-row">
-        <button type="button" onClick={onTest} disabled={settings.input_guid === null}>
+        <button
+          type="button"
+          onClick={onTest}
+          disabled={settings.input_guid === null || running}
+        >
           {zhTW.vmix.test}
         </button>
+        <button
+          type="button"
+          onClick={onClearFields}
+          disabled={settings.input_guid === null || running}
+        >
+          {zhTW.vmix.clearFields}
+        </button>
+        {running ? <span>{zhTW.vmix.testBusy}</span> : null}
+      </div>
+      <p className="panel__note">{zhTW.vmix.testHint}</p>
 
+      <div className="field-row">
         <label htmlFor="vmix-overlay-url">{zhTW.vmix.overlayUrl}</label>
         <input id="vmix-overlay-url" readOnly value={overlayUrl} />
         <button

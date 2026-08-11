@@ -66,6 +66,13 @@ vmix:
   min_interval_ms: 200
   timeout_ms: 1000
 
+ui:
+  # Panels folded away in the control page. Kept here rather than in browser
+  # storage so it survives a reload and moves with the setup.
+  collapsed:
+    - prerequisites
+    - credentials
+
 features:
   transcript_persistence: false
   lan_access: false

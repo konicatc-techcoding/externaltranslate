@@ -11,6 +11,7 @@ from backend.app.api.models import (
     CaptionStyleUpdate,
     SettingsResponse,
     SettingsUpdate,
+    UiSettings,
     VmixSettings,
     VmixSettingsUpdate,
 )
@@ -19,6 +20,7 @@ from backend.app.config import (
     caption_max_payload_length,
     caption_sentence_breaks,
     caption_style,
+    ui_settings,
     vmix_settings,
 )
 from backend.app.services.runtime import (
@@ -44,6 +46,7 @@ def _to_response(settings: Any) -> SettingsResponse:
         caption_sentence_breaks=caption_sentence_breaks(settings),
         caption_style=CaptionStyle(**caption_style(settings)),
         vmix=VmixSettings(**vmix_settings(settings)),
+        ui=UiSettings(**ui_settings(settings)),
         session_rotation_seconds=gemini["session_rotation_seconds"],
     )
 
@@ -122,13 +125,31 @@ def update_vmix(
     Retargeting a live output would leave the previous title showing whatever
     was on it, with nothing left to clear it.
     """
-    changes = payload.model_dump(exclude_none=True)
+    # `exclude_unset`, not `exclude_none`: the panel clears the chosen input by
+    # sending an explicit null, and `exclude_none` would drop it silently —
+    # the "—" option would appear to do nothing.
+    changes = payload.model_dump(exclude_unset=True)
     enabled = changes.pop("enabled", None)
     try:
         if changes:
             runtime.update_vmix_settings(changes)
         if enabled is not None:
             runtime.set_vmix_enabled(bool(enabled))
+    except RuntimeSelectionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
+        ) from None
+    return _to_response(runtime.settings)
+
+
+@router.put("/settings/ui", response_model=SettingsResponse)
+def update_ui(
+    payload: UiSettings,
+    runtime: Annotated[PipelineRuntime, Depends(get_runtime)],
+) -> SettingsResponse:
+    """Remember which panels are folded away, so a reload keeps the layout."""
+    try:
+        runtime.update_collapsed_panels(payload.collapsed)
     except RuntimeSelectionError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)

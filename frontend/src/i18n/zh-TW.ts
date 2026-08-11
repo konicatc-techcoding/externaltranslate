@@ -14,6 +14,9 @@ export const zhTW = {
     error: "發生錯誤",
   },
   prerequisites: {
+    allReady: "全部就緒",
+    notChecked: "尚未檢查",
+    problems: "{count} 項需要處理",
     title: "環境檢查",
     refresh: "重新檢查",
     statusLabels: {
@@ -25,6 +28,8 @@ export const zhTW = {
     },
   },
   credentials: {
+    set: "已設定",
+    unset: "尚未設定",
     title: "Gemini API Key",
     inputLabel: "API Key 輸入欄",
     placeholder: "貼上 API Key",
@@ -102,8 +107,16 @@ export const zhTW = {
     alignCenter: "置中",
     alignRight: "靠右",
   },
+  sections: {
+    settings: "設定",
+    operate: "翻譯操作",
+    caption: "字幕設定",
+  },
   vmix: {
     title: "vMix 輸出",
+    on: "已啟用",
+    off: "關閉",
+    noInput: "尚未選 input",
     note: "把後端斷好行的字幕送進 GT Title 的文字欄位；網頁 overlay 不受影響。",
     enabled: "啟用 vMix 輸出",
     host: "vMix 主機",
@@ -116,8 +129,11 @@ export const zhTW = {
     fieldsHint:
       "在 vMix 的 Title Editor 建立同名的文字欄位；文字欄位要加 .Text 後綴。",
     mismatch: "目前字幕有 {lines} 行，但只設定了 {fields} 個欄位，只會顯示最後幾行。",
-    test: "送出測試文字",
-    testText: "測試字幕",
+    test: "送出測試字幕",
+    clearFields: "清空欄位",
+    testHint:
+      "每個欄位各送一行，內容標明是第幾行與欄位名稱——vMix 畫面上的順序若和這裡不同，就是 Title 的欄位順序要調整。走的是翻譯時的同一條路徑。",
+    testBusy: "翻譯執行中無法測試",
     remoteWarning:
       "vMix Web API 只有 HTTP、沒有加密。指定非本機位址時，翻譯後的字幕會以明文經過區域網路。",
     overlayUrl: "Browser Input 網址",

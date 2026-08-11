@@ -6,14 +6,17 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from backend.app.api.dependencies import get_runtime
 from backend.app.api.models import (
-    MessageResponse,
     VmixInputItem,
     VmixInputList,
     VmixTestRequest,
+    VmixTestResponse,
 )
-from backend.app.config import vmix_settings
 from backend.app.outputs.vmix import VmixError
-from backend.app.services.runtime import PipelineRuntime
+from backend.app.services.runtime import (
+    PipelineRuntime,
+    RuntimeConflictError,
+    RuntimeSelectionError,
+)
 
 router = APIRouter(prefix="/api/vmix", tags=["vmix"])
 
@@ -48,26 +51,54 @@ async def read_inputs(
     )
 
 
-@router.post("/test", response_model=MessageResponse)
-async def send_test_text(
+@router.post("/test", response_model=VmixTestResponse)
+async def send_test_caption(
     payload: VmixTestRequest,
     runtime: Annotated[PipelineRuntime, Depends(get_runtime)],
-) -> MessageResponse:
-    """Write one line into the configured title, to prove the wiring works."""
-    vmix = vmix_settings(runtime.settings)
-    guid = vmix["input_guid"]
-    if not guid:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="尚未選擇要輸出的 vMix input。",
-        )
-    fields = list(vmix["fields"])
+) -> VmixTestResponse:
+    """Write a full set of lines, one per field, through the real output path.
+
+    Every field is written — including blanking the ones a shorter caption
+    would not fill — so the test shows the same thing a running translation
+    would, in the same order.
+    """
     try:
-        await runtime.vmix_client().set_text(str(guid), fields[0], payload.text)
+        written = await runtime.send_vmix_test(payload.lines)
+    except RuntimeConflictError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+        ) from None
+    except RuntimeSelectionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
+        ) from None
     except VmixError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
         ) from None
-    return MessageResponse(
-        message=f"已送出測試文字到「{vmix['input_name'] or guid}」的 {fields[0]}。"
+    return VmixTestResponse(
+        message=f"已送出 {len(written)} 行測試字幕；請比對 vMix 畫面的順序。",
+        lines=written,
     )
+
+
+@router.post("/clear", response_model=VmixTestResponse)
+async def clear_fields(
+    runtime: Annotated[PipelineRuntime, Depends(get_runtime)],
+) -> VmixTestResponse:
+    """Blank every configured field, for tidying up after a test."""
+    try:
+        await runtime.clear_vmix_fields()
+    except RuntimeConflictError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+        ) from None
+    except RuntimeSelectionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
+        ) from None
+    except VmixError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from None
+    return VmixTestResponse(message="已清空 vMix 字幕欄位。", lines=[])

@@ -85,23 +85,6 @@ def test_more_lines_than_fields_keeps_the_newest() -> None:
     asyncio.run(scenario())
 
 
-def test_a_single_field_joins_the_lines() -> None:
-    async def scenario() -> None:
-        with FakeVmix([_TITLE]) as server:
-            output = build(server, fields=("Caption.Text",))
-            output.set_single_field_join(True)
-            await output.start()
-            output.publish(["第一行", "第二行"])
-            await until(lambda: len(server.calls) >= 1)
-            await output.aclose()
-
-            value = server.calls[-1].value
-
-        assert value == "第一行\r\n第二行"
-
-    asyncio.run(scenario())
-
-
 def test_clear_blanks_every_field() -> None:
     async def scenario() -> None:
         with FakeVmix([_TITLE]) as server:

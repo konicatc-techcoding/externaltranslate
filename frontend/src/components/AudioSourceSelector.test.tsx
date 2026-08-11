@@ -42,6 +42,7 @@ function settings(overrides: Partial<AppSettings> = {}): AppSettings {
     caption_sentence_breaks: true,
     caption_style: DEFAULT_CAPTION_STYLE,
     vmix: DEFAULT_VMIX_SETTINGS,
+    ui: { collapsed: [] },
     session_rotation_seconds: 480,
     ...overrides,
   };

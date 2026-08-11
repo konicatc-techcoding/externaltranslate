@@ -163,6 +163,7 @@ export interface AppSettings {
   caption_sentence_breaks: boolean;
   caption_style: CaptionStyle;
   vmix: VmixSettings;
+  ui: { collapsed: string[] };
   session_rotation_seconds: number;
 }
 

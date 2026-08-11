@@ -26,16 +26,130 @@ select {
   font: inherit;
 }
 
+/* Three regions divided by 2px rules: a status strip across the top, the
+   live controls bottom-left, the settings bottom-right. The split follows
+   when things are used — during a show only the top strip and the left
+   column matter. */
 .app-shell {
   display: grid;
-  gap: 1.25rem;
-  width: min(100%, 60rem);
-  margin: 0 auto;
-  padding: 2rem;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-areas:
+    "top   top"
+    "alert alert"
+    "left  right";
+  min-height: 100vh;
+  gap: 0;
 }
 
-.app-header h1 {
-  margin-bottom: 0.25rem;
+.app-top {
+  grid-area: top;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  align-items: flex-start;
+  padding: 0.9rem 1.25rem;
+  border-bottom: 2px solid #2a3a51;
+}
+
+.app-alert {
+  grid-area: alert;
+  margin: 0.75rem 1.25rem 0;
+}
+
+.app-left {
+  grid-area: left;
+  display: grid;
+  align-content: start;
+  gap: 1rem;
+  padding: 1.25rem;
+  border-right: 2px solid #2a3a51;
+}
+
+.app-right {
+  grid-area: right;
+  display: grid;
+  align-content: start;
+  gap: 0.75rem;
+  padding: 1.25rem;
+}
+
+/* Below this the two columns cannot both hold a usable form. */
+@media (max-width: 60rem) {
+  .app-shell {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "top" "alert" "left" "right";
+  }
+
+  .app-left {
+    border-right: none;
+    border-bottom: 2px solid #2a3a51;
+  }
+}
+
+/* The strip carries information, not controls, so everything in it shrinks:
+   no panel frames, no headings competing with the product name. */
+.app-top h1 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.app-top p {
+  margin: 0.15rem 0 0;
+  color: #9db2cd;
+  font-size: 0.9rem;
+}
+
+.app-top .panel {
+  padding: 0;
+  border: none;
+  background: none;
+}
+
+.app-top h2 {
+  margin: 0 0 0.2rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #9db2cd;
+}
+
+.app-top .status-badge {
+  margin-top: 0.4rem;
+  padding: 0.3rem 0.6rem;
+  font-size: 0.85rem;
+}
+
+.app-top__identity {
+  min-width: 14rem;
+}
+
+.app-top__meter {
+  min-width: 16rem;
+}
+
+.app-top__components {
+  flex: 1 1 22rem;
+  font-size: 0.85rem;
+}
+
+/* Component states read as a row of chips rather than a stacked list. */
+.app-top .component-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.9rem;
+}
+
+.app-top .component-list li {
+  gap: 0.35rem;
+}
+
+.app-top .meter__row {
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.app-top .meter__row progress {
+  width: 8rem;
 }
 
 .panel {
@@ -43,6 +157,75 @@ select {
   border: 1px solid #2a3a51;
   border-radius: 0.75rem;
   background: #172232;
+}
+
+/* A folded panel is still a panel: same frame, no jump when it opens. */
+.panel--collapsible {
+  padding: 0;
+}
+
+.panel__summary {
+  display: flex;
+  gap: 0.75rem;
+  align-items: baseline;
+  padding: 1rem 1.25rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.panel__summary::-webkit-details-marker {
+  display: none;
+}
+
+.panel__summary::before {
+  content: "▸";
+  color: #9db2cd;
+  transition: transform 120ms ease-out;
+}
+
+.panel--collapsible[open] > .panel__summary::before {
+  transform: rotate(90deg);
+}
+
+.panel__summary-title {
+  font-size: 1.17rem;
+  font-weight: 600;
+}
+
+.panel__summary-note {
+  color: #9db2cd;
+  font-size: 0.9rem;
+}
+
+.panel__body {
+  padding: 0 1.25rem 1.25rem;
+}
+
+/* Three settings groups inside one panel: they keep their headings for
+   orientation but drop the frame, or the page looks like boxes in boxes. */
+.stacked-settings > .panel {
+  padding: 0;
+  border: none;
+  background: none;
+}
+
+.stacked-settings > .panel + .panel {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid #2a3a51;
+}
+
+.stacked-settings h2 {
+  font-size: 1rem;
+  margin: 0 0 0.25rem;
+}
+
+.section-divider {
+  margin: 1rem 0 -0.5rem;
+  color: #9db2cd;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
 }
 
 .panel__header {

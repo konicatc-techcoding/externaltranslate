@@ -30,11 +30,13 @@ _JOIN = "\r\n"
 
 
 class VmixOutput:
-    """Writes caption lines into a vMix GT Title's text fields.
+    """Writes caption lines into a vMix GT Title's text fields, one per field.
 
-    One line per field by default: a GT Title gives no wrapping guarantee, so
-    the backend's own line breaks are the only way the title and the web
-    overlay can agree on where a line ends.
+    A GT Title gives no wrapping guarantee, so the backend's own line breaks
+    are the only way the title and the web overlay can agree on where a line
+    ends. Putting every line in a single box was tried and removed
+    (2026-08-10): the whole block redraws on every window slide, which reads
+    as the caption being wiped and restarted mid-sentence.
 
     Every failure stays inside this class. `publish` returns immediately and
     never raises, because it is called from the caption path — translation
@@ -53,7 +55,6 @@ class VmixOutput:
         self._client = client
         self._input_guid = input_guid
         self._fields = tuple(fields)
-        self._single_field_join = False
         self._on_state = on_state
         self._state: OutputState | None = None
         self._sender = ThrottledSender(
@@ -63,10 +64,20 @@ class VmixOutput:
         )
         self._task: asyncio.Task[None] | None = None
         self._last_error: str | None = None
+        self._last_failure: VmixError | None = None
 
     @property
     def last_error(self) -> str | None:
         return self._last_error
+
+    @property
+    def last_failure(self) -> VmixError | None:
+        """The transport failure from `start`, if that is why it refused.
+
+        Lets a caller tell "vMix is not reachable" from "the configured input
+        is gone" — one is a service being down, the other is a setting to fix.
+        """
+        return self._last_failure
 
     @property
     def failures(self) -> int:
@@ -75,14 +86,6 @@ class VmixOutput:
     @property
     def field_count(self) -> int:
         return len(self._fields)
-
-    def set_single_field_join(self, enabled: bool) -> None:
-        """Join all lines into the first field with CRLF instead of one each.
-
-        Whether that renders as multiple lines is a property of the operator's
-        title, not something this program can promise.
-        """
-        self._single_field_join = enabled
 
     async def start(self) -> bool:
         """Verify the input still exists, then begin sending.
@@ -95,6 +98,7 @@ class VmixOutput:
             inputs = await self._client.inputs()
         except VmixError as exc:
             self._last_error = str(exc)
+            self._last_failure = exc
             self._publish_state(OutputState.ERROR)
             return False
 
@@ -102,10 +106,12 @@ class VmixOutput:
             self._last_error = (
                 "在 vMix 找不到設定的 input；請重新選擇要輸出的 GT Title。"
             )
+            self._last_failure = None
             self._publish_state(OutputState.ERROR)
             return False
 
         self._last_error = None
+        self._last_failure = None
         self._publish_state(OutputState.CONNECTED)
         self._sender.forget_last_sent()
         self._task = asyncio.create_task(self._sender.run(), name="vmix-output")
@@ -113,6 +119,10 @@ class VmixOutput:
 
     def publish(self, lines: Sequence[str]) -> None:
         self._sender.submit(self._to_field_values(lines))
+
+    async def flush(self) -> None:
+        """Deliver the pending lines immediately, ignoring the throttle."""
+        await self._sender.flush()
 
     async def clear(self) -> None:
         self._sender.submit(tuple("" for _ in self._fields))
@@ -140,9 +150,6 @@ class VmixOutput:
             self._on_state(state)
 
     def _to_field_values(self, lines: Sequence[str]) -> tuple[str, ...]:
-        if self._single_field_join and self._fields:
-            joined = _JOIN.join(lines)
-            return (joined,) + tuple("" for _ in self._fields[1:])
         # Keep the newest lines when the title has fewer fields than the
         # caption has lines, matching the sliding window everywhere else.
         visible = list(lines)[-len(self._fields) :] if self._fields else []

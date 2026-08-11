@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import suppress
 from copy import deepcopy
 from dataclasses import dataclass
@@ -31,12 +31,14 @@ from backend.app.config import (
     CAPTION_STYLE_FIELDS,
     CHARS_PER_LINE_RANGE,
     MAX_LINES_RANGE,
+    UI_PANEL_IDS,
     ConfigurationError,
     caption_layout,
     caption_max_payload_length,
     caption_sentence_breaks,
     caption_style,
     save_user_settings,
+    ui_settings,
     vmix_settings,
 )
 from backend.app.config import (
@@ -553,6 +555,65 @@ class PipelineRuntime:
             host=vmix["host"], port=vmix["port"], timeout_ms=vmix["timeout_ms"]
         )
 
+    def vmix_test_lines(self) -> list[str]:
+        """One marker per configured field, so a wrong order is obvious."""
+        fields = list(vmix_settings(self._settings)["fields"])
+        return [f"第 {index + 1} 行（{name}）" for index, name in enumerate(fields)]
+
+    async def send_vmix_test(self, lines: Sequence[str] | None = None) -> list[str]:
+        """Write one set of lines through the same path a real run uses.
+
+        Deliberately the real `VmixOutput` rather than a direct `set_text`: a
+        test that takes a different route proves nothing about the route the
+        captions will take. This exercises the GUID check, the line-to-field
+        mapping, the blanking of unused fields and the encoding.
+        """
+        return await self._with_test_output(lambda output, values: output.publish(values), lines)
+
+    async def clear_vmix_fields(self) -> list[str]:
+        """Blank every configured field, for tidying up after a test."""
+        return await self._with_test_output(None, None)
+
+    async def _with_test_output(
+        self,
+        publish: Callable[[VmixOutput, list[str]], None] | None,
+        lines: Sequence[str] | None,
+    ) -> list[str]:
+        if self.running:
+            # The next caption would overwrite it within one throttle window,
+            # so the result would say nothing about the wiring.
+            raise RuntimeConflictError(
+                "翻譯執行中無法送出測試字幕；請先停止翻譯再測試。"
+            )
+        vmix = vmix_settings(self._settings)
+        if not vmix["input_guid"]:
+            raise RuntimeSelectionError("尚未選擇要輸出的 vMix input。")
+
+        values = list(lines) if lines is not None else self.vmix_test_lines()
+        output = VmixOutput(
+            self.vmix_client(),
+            input_guid=str(vmix["input_guid"]),
+            fields=list(vmix["fields"]),
+            min_interval_ms=int(vmix["min_interval_ms"]),
+        )
+        if not await output.start():
+            # Unreachable and misconfigured are different problems: one is the
+            # service being down (503), the other a setting to fix (422).
+            if output.last_failure is not None:
+                raise output.last_failure
+            raise RuntimeSelectionError(
+                output.last_error or "無法連線到 vMix；請確認 vMix 已啟動。"
+            )
+        try:
+            if publish is None:
+                await output.clear()
+                return []
+            publish(output, values)
+            await output.flush()
+            return values
+        finally:
+            await output.aclose()
+
     def update_vmix_settings(self, updates: Mapping[str, Any]) -> None:
         """Change the vMix target. Takes effect on the next start."""
         allowed = {"host", "port", "input_guid", "input_name", "fields",
@@ -572,6 +633,17 @@ class PipelineRuntime:
 
         self._settings["vmix"] = merged
         self._persist_vmix_settings()
+
+    def update_collapsed_panels(self, collapsed: Sequence[str]) -> None:
+        """Remember which panels are folded away."""
+        unknown = set(collapsed) - set(UI_PANEL_IDS)
+        if unknown:
+            raise RuntimeSelectionError(f"未知的面板代號：{min(unknown)}。")
+        self._settings["ui"] = {"collapsed": list(dict.fromkeys(collapsed))}
+        path = self._user_settings_path
+        if path is not None:
+            with suppress(ConfigurationError, OSError):
+                self._persist(path, {"ui": ui_settings(self._settings)})
 
     def set_vmix_enabled(self, enabled: bool) -> None:
         features = dict(self._settings.get("features") or {})

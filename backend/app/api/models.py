@@ -119,7 +119,21 @@ class VmixInputList(StrictModel):
 
 
 class VmixTestRequest(StrictModel):
-    text: str = Field(min_length=1, max_length=200)
+    """Lines to write. Omitted means "one marker per configured field"."""
+
+    lines: list[str] | None = Field(default=None, max_length=10)
+
+
+class VmixTestResponse(StrictModel):
+    message: str
+    #: Exactly what was written, so the operator can compare with the screen.
+    lines: list[str]
+
+
+class UiSettings(StrictModel):
+    """Which control-page panels are folded away."""
+
+    collapsed: list[str]
 
 
 class SettingsResponse(StrictModel):
@@ -133,6 +147,7 @@ class SettingsResponse(StrictModel):
     caption_sentence_breaks: bool
     caption_style: CaptionStyle
     vmix: VmixSettings
+    ui: UiSettings
     session_rotation_seconds: int
 
 

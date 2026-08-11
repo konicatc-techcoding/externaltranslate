@@ -218,6 +218,17 @@ _CAPTION_KEYS = _CAPTION_LAYOUT_KEYS | set(CAPTION_STYLE_FIELDS_BY_NAME)
 # used for something it is not.
 MAX_DEVICE_NAME_LENGTH = 200
 
+# Panels the operator may fold away. A closed list rather than free strings:
+# the ids come back from the browser, and an unknown one should fail closed
+# like every other setting instead of being stored and never rendered.
+UI_PANEL_IDS: tuple[str, ...] = (
+    "prerequisites",
+    "credentials",
+    "audio",
+    "caption",
+    "vmix",
+)
+
 _VMIX_KEYS = {
     "host",
     "port",
@@ -264,6 +275,7 @@ def load_settings(
     _validate_gemini_settings(settings)
     _validate_caption_settings(settings)
     validate_vmix_settings(settings)
+    _validate_ui_settings(settings)
     return settings
 
 
@@ -593,6 +605,37 @@ def _validate_vmix_fields(fields: Any) -> None:
             raise ConfigurationError(
                 f"vmix.fields 的每個項目必須是 1 到 {MAX_VMIX_FIELD_LENGTH} 字元的非空字串。"
             )
+
+
+def _validate_ui_settings(settings: Settings) -> None:
+    ui = settings.get("ui")
+    if ui is None:
+        return
+    if not isinstance(ui, Mapping):
+        raise ConfigurationError("ui 必須是 mapping。")
+    unknown = set(ui) - {"collapsed"}
+    if unknown:
+        raise ConfigurationError(
+            f"不支援或尚未接線的設定欄位：ui.{min(str(item) for item in unknown)}"
+        )
+
+    collapsed = ui.get("collapsed", [])
+    if not isinstance(collapsed, list):
+        raise ConfigurationError("ui.collapsed 必須是面板代號的清單。")
+    for panel in collapsed:
+        if panel not in UI_PANEL_IDS:
+            raise ConfigurationError(f"ui.collapsed 含未知的面板代號：{panel}")
+
+
+def ui_settings(settings: Mapping[str, Any]) -> dict[str, Any]:
+    """Which panels the operator has folded away.
+
+    Purely presentational, but it lives with the other settings so it travels
+    with the setup — and so the browser never has to write to storage.
+    """
+    ui = settings.get("ui") or {}
+    collapsed = [panel for panel in ui.get("collapsed", []) if panel in UI_PANEL_IDS]
+    return {"collapsed": collapsed}
 
 
 def vmix_settings(settings: Mapping[str, Any]) -> dict[str, Any]:

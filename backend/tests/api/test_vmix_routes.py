@@ -76,23 +76,13 @@ def test_inputs_are_listed_with_their_field_names(client: TestClient) -> None:
     assert body["inputs"][0]["text_fields"] == ["Line1.Text", "Line2.Text"]
 
 
-def test_a_test_message_reaches_the_first_field(
-    client: TestClient, server: FakeVmix
-) -> None:
-    response = client.post("/api/vmix/test", json={"text": "測試字幕"})
-
-    assert response.status_code == 200
-    assert server.calls[-1].field == "Line1.Text"
-    assert server.calls[-1].value == "測試字幕"
-
-
 def test_vmix_being_down_is_503_not_a_crash(
     client: TestClient, server: FakeVmix
 ) -> None:
     server.set_mode("close")
 
     assert client.get("/api/vmix/inputs").status_code == 503
-    assert client.post("/api/vmix/test", json={"text": "測試"}).status_code == 503
+    assert client.post("/api/vmix/test", json={}).status_code == 503
 
 
 def test_settings_round_trip(client: TestClient) -> None:
@@ -134,3 +124,82 @@ def test_a_remote_host_is_accepted(client: TestClient) -> None:
 def test_the_settings_payload_carries_no_credential(client: TestClient) -> None:
     body = client.get("/api/settings").text
     assert "password" not in body.lower()
+
+
+def test_collapsed_panels_round_trip(client: TestClient) -> None:
+    # Folding a panel away is a setting like any other, so it goes to the
+    # settings file rather than to browser storage.
+    response = client.put(
+        "/api/settings/ui", json={"collapsed": ["prerequisites", "vmix"]}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["ui"]["collapsed"] == ["prerequisites", "vmix"]
+    assert client.get("/api/settings").json()["ui"]["collapsed"] == [
+        "prerequisites",
+        "vmix",
+    ]
+
+
+def test_an_unknown_panel_id_is_refused(client: TestClient) -> None:
+    response = client.put("/api/settings/ui", json={"collapsed": ["nonsense"]})
+
+    assert response.status_code == 422
+    assert client.get("/api/settings").json()["ui"]["collapsed"] == []
+
+
+def test_the_test_caption_writes_every_field_in_order(
+    client: TestClient, server: FakeVmix
+) -> None:
+    # One marker per field, so a title whose boxes are in the wrong order
+    # shows it immediately.
+    response = client.post("/api/vmix/test", json={})
+
+    assert response.status_code == 200
+    written = [(call.field, call.value) for call in server.calls]
+    assert written == [
+        ("Line1.Text", "第 1 行（Line1.Text）"),
+        ("Line2.Text", "第 2 行（Line2.Text）"),
+    ]
+    assert response.json()["lines"] == [
+        "第 1 行（Line1.Text）",
+        "第 2 行（Line2.Text）",
+    ]
+
+
+def test_custom_test_lines_pad_the_unused_fields(
+    client: TestClient, server: FakeVmix
+) -> None:
+    # A one-line caption must blank the second field, exactly as a real run
+    # does — otherwise the previous line stays under the new one.
+    response = client.post("/api/vmix/test", json={"lines": ["只有一行"]})
+
+    assert response.status_code == 200
+    assert [call.value for call in server.calls] == ["只有一行", ""]
+
+
+def test_clearing_blanks_every_field(client: TestClient, server: FakeVmix) -> None:
+    client.post("/api/vmix/test", json={})
+    server.state.calls.clear()
+
+    response = client.post("/api/vmix/clear")
+
+    assert response.status_code == 200
+    assert [call.value for call in server.calls] == ["", ""]
+
+
+def test_a_test_without_a_chosen_input_is_422(client: TestClient) -> None:
+    client.put("/api/settings/vmix", json={"input_guid": None, "input_name": None})
+
+    assert client.post("/api/vmix/test", json={}).status_code == 422
+
+
+def test_the_chosen_input_can_be_cleared(client: TestClient) -> None:
+    # An explicit null means "deselect". Treating it as "not provided" would
+    # make the panel's "—" option silently do nothing.
+    response = client.put(
+        "/api/settings/vmix", json={"input_guid": None, "input_name": None}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["vmix"]["input_guid"] is None
