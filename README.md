@@ -284,9 +284,23 @@ bounded drop-oldest queue；唯一的persistent PCM reader位於Gemini sessions�
 這是要把程式跑在**另一台機器**（例如 vMix 那台）時該用的方式：不需要開兩個終端機，
 執行期也不需要 Node——頁面已經是建置好的靜態檔，由後端自己提供，而且與它呼叫的 API 同源。
 
-那台機器需要的是 **Python 3.11 與 uv**。Node 只有「在該機器建置前端」時才需要；
-若不想在那台裝 Node，可在有 Node 的機器上執行 `npm install && npm run build`，
-再把整個 `frontend/dist` 資料夾複製過去（`run.bat` 偵測到已建置就會直接啟動）。
+那台機器需要的是 **Python 3.11 與 uv**。Node 只有「在該機器建置前端」時才需要。
+
+### 不想在那台裝 Node：用 `prebuilt` 分支
+
+`prebuilt` 分支就是 `main` **加上已建置的 `frontend/dist`**，所以拿到就能跑：
+
+```bash
+git clone -b prebuilt https://github.com/konicatc-techcoding/externaltranslate.git
+```
+
+之後更新一樣 `git pull`（這個分支只會往前合併，不會被重寫）。
+
+那個分支是**拿來跑的，不是拿來開發的**——建置產物在裡面，開發請用 `main`。
+`main` 有新東西時由維護者重新建置並合併過去，所以 `prebuilt` 可能落後 `main` 幾個 commit。
+
+也可以不用分支：在有 Node 的機器上 `npm install && npm run build`，
+再把整個 `frontend/dist` 資料夾複製到目標機器的相同位置（只有三個檔案）。
 
 `frontend/dist` 是建置產物，不進 Git。啟動時印出的 JSON 會回報 `ui` 欄位：
 `null` 代表這個 checkout 還沒建置——API 正常，但開頁面會是 404。

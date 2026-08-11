@@ -777,6 +777,23 @@ Modify: README.md
 
 先完成 onedir smoke test，再建立 installer；不直接跳到 onefile。
 
+### 不自動安裝任何東西（2026-08-11 決議）
+
+使用者問「打包時能不能檢查環境、沒裝 Node 就自動幫他裝」。答案是**不需要，也不會做**：
+
+- **Node 是建置期依賴，不是執行期依賴。** 打包時前端已經建置完成並嵌進套件裡
+  （`React static assets 嵌入`），安裝端不會有 `npm run build` 這一步。上面
+  「End-user 不需安裝 Python 或 Node.js」就是這個意思——打包完就沒有這個問題了。
+- **自動安裝全域套件牴觸專案的安全原則**（見 `AGENTS.md`／`status.md`：不得修改系統
+  PATH、安裝驅動或全域套件）。靜默安裝需要管理員權限、可能覆蓋機器上其他工具依賴的版本、
+  解除安裝時也難以還原。一個會在背後裝執行環境的應用程式，使用者無從判斷它動了什麼。
+- **prerequisite check 的職責是「報告」，不是「代勞」。** `PrerequisiteChecker` 現有形狀
+  （status ＋ 可執行的 `action` 文字）就是對的：缺什麼、去哪裡拿、裝完再按重新檢查。
+
+**打包完成前的過渡辦法**（不需要在目標機器裝 Node）：在有 Node 的機器上
+`npm run build`，把整個 `frontend/dist` 資料夾複製到目標機器的相同位置，
+`run.bat` 偵測到已建置就直接啟動。目標機器仍需 Python 3.11 與 uv。
+
 ---
 
 # v1.0：Release Hardening
