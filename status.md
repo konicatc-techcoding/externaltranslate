@@ -12,7 +12,11 @@
 
 1. **等使用者授權 commit**（Stage 5 Phase A 已完成，尚未 commit）。
 2. **Stage 5 Phase B：真實 vMix 驗收**。使用者需啟動 vMix、開啟 Web Controller、
-   依控制頁顯示的欄位名稱建立 GT Title。計劃檔 §5 有完整步驟。
+   建立 GT Title。計劃檔 §5 有完整步驟。
+   **關鍵：不要照 `.Text` 慣例猜欄位名稱**——建好 Title 後按控制頁「從 vMix 讀取 input」，
+   用 vMix 自己回報的名稱填入欄位清單。那份名單才是權威，也正是 Phase B 要驗證的事之一。
+   **2026-08-10 現況**：使用者目前無法變更 IP，因此 Phase B 先在**同一台**執行；
+   跨機器的 GT Title 待日後有條件再測。
    **在 Phase B 通過前，Stage 5 一律標為「待實機驗收」，不得宣稱完成。**
 3. **v0.1 驗收剩餘項目**：斷網測試與裝置錯誤測試（見下方 ⏳ 待辦）。
 4. 使用者回報中英數混排斷行的實際效果後再調整 formatter（目前無已知問題）。
@@ -26,6 +30,13 @@
 >   **「一鍵安裝」（Stage 6 pywebview／PyInstaller／Inno Setup）排到 Stage 5 之後**。
 >   理由：PyInstaller 最怕依賴變動，vMix 整合會再動執行期形狀；且 v0.1 驗收未關。
 >   使用者尚未指示開始，勿自行動工。
+> - **Browser Input 跨機器**：目前**不支援**，且是刻意的。`resolve_bind_host()` 只允許
+>   `127.0.0.1`，`features.lan_access` 被明確忽略（Stage 4 決定：把服務攤上網路等於把
+>   「這台機器聽得到的聲音」也攤上去）。**GT Title 跨機器可以**（我們主動連出去），
+>   **Browser Input 不行**（對方要連進來）。
+>   使用者 2026-08-10 要求記錄，之後有空再做。真要做的最低限度：明確開關（非預設）、
+>   綁定位址由使用者指定、控制頁標示服務已對外，且**建議只開 `/overlay`，控制頁與 API
+>   維持 loopback**。未經使用者指示不得動工。
 
 ---
 
@@ -133,11 +144,10 @@
 ### Stage 5 Phase A（2026-08-10，vMix 輸出，**待實機驗收**）
 計劃檔：`.hermes/plans/2026-08-10_162520-stage-5-vmix.md`
 
-環境：vMix **28.0.0.42** 已安裝於 `C:\Program Files (x86)
-Mix
-mix.exe`，實作期間未啟動。
+環境：vMix **28.0.0.42** 已安裝於 `C:\Program Files (x86)\vMix\vmix.exe`，實作期間未啟動。
 官方 API 事實：port 8088、`GET /api/` 回 XML、`SetText` 參數為
-`Function`／`Input`／`SelectedName`／`Value`、GT Title 文字欄位名稱要加 `.Text` 後綴。
+`Function`／`Input`／`SelectedName`／`Value`。**文件說** GT Title 文字欄位名稱要加 `.Text`
+後綴——**這是 Phase B 要驗證的事，不是前提**；實測時以 `GET /api/vmix/inputs` 回報的名稱為準。
 
 - `backend/app/outputs/`：`base.py`（`CaptionOutput` protocol ＋ `NullOutput`）、
   `vmix.py`（client：XML 探索、`SetText`、錯誤分類）、`sender.py`（節流送出器）、
@@ -274,13 +284,17 @@ font kai / size 64 / color #FFCC00 / scroll false / scroll_ms 400` 七項全部�
 `BUILD.md` 驗收標準之一「模擬網路錯誤與裝置錯誤不會使程式無預期結束」尚未實測，
 目前是 v0.1 的 blocker。使用者已表示有空時進行（2026-08-10）。
 
-- [ ] **斷網測試**：翻譯執行中中斷網路數秒後恢復。預期：`gemini_provider` 進入 `backoff`
-      並顯示 attempt／delay，恢復後重新 `connected`；服務不崩潰，錯誤訊息為繁體中文。
-- [ ] **裝置錯誤測試**：翻譯執行中停用或拔除正在使用的音訊裝置。預期：`audio_source`
-      轉為 `error`，pipeline 安全停止，UI 顯示可行動的繁體中文訊息，之後仍可重新 Start。
-      **2026-08-10 起這項更需要跑**：音訊裝置持久化改動過選擇路徑，已驗證的只有「啟動時
-      還原」，**「執行中裝置消失」未驗證**。
-- [ ] 兩項結果補進 `docs/reports/v0.1-verification.md` §5（目前標為 C｜未驗證）。
+- [x] **斷網測試（2026-08-10 通過）**：使用者於翻譯途中停用 Wi-Fi，程式續存。
+- [ ] **裝置錯誤測試——發現缺口，修法已定但延後實作**：使用者於翻譯途中停用內建麥克風，
+      **翻譯沒有停止也沒有報錯**。查證後確認是程式行為，不是測試方式問題：
+      `input_device.py` 有數 `status_events` 但從未據以動作；`translation_pipeline.py` 的
+      `_read_audio` 收到 `TimeoutError` 就 `continue`。**「裝置停止送資料」與「房間安靜」
+      目前無法區分。**
+      **修法（使用者 2026-08-10 決定先不做）**：看門狗盯 `CaptureStats.callback_blocks`
+      是否停止增加——安靜時 callback 仍會觸發並送近 0 的 PCM，裝置死掉時 callback 完全停止，
+      兩者可精確區分。**偵測後要停止 pipeline 或只顯示錯誤，尚未決定。**
+      **待測**：實體拔除外接裝置（與「停用」行為可能不同），使用者取得裝置後再測。
+- [x] 結果已補進 `docs/reports/v0.1-verification.md` §5 與新增的 §5.1。
 
 執行方式：開著控制頁看元件狀態，或另開終端機用
 `curl -s http://127.0.0.1:8765/api/pipeline/status` 取狀態快照（不含字幕文字）。

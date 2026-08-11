@@ -829,8 +829,12 @@ Stage 0、Stage 1、Stage 1.2 與 Stage 2 已完成並通過驗證與發布：
 
 ### 尚未完成
 
-**v0.1 驗收剩餘（使用者手動執行）**：斷網測試與裝置錯誤測試，見 `status.md` 的 ⏳ 待辦。
-這兩項是 v0.1 唯一的 blocker。
+**v0.1 驗收（2026-08-10 部分完成）**：
+- 斷網測試**已通過**。
+- 裝置錯誤測試發現缺口：**裝置停止送資料時程式不會察覺**，因為「callback 停止」與
+  「房間安靜」目前無法區分。修法已定（看門狗盯 `CaptureStats.callback_blocks`），
+  **使用者決定先不做**，待其取得外接裝置測試實體拔除後再議。
+  詳見 `docs/reports/v0.1-verification.md` §5.1。
 
 **Stage 4.1 剩餘能力**：
 
@@ -858,6 +862,13 @@ Stage 0、Stage 1、Stage 1.2 與 Stage 2 已完成並通過驗證與發布：
 行→欄位映射、失敗隔離、API routes 與控制頁面板，全部以假 vMix 走真實 HTTP 驗證。
 Phase B（真機 smoke）未執行，因此 Stage 5 **尚未完成**。
 
+**跨機器輸出的現況**（2026-08-10 記錄，之後有空再做）：
+- **GT Title 可以跨機器**——我們主動連出去打 vMix API，`vmix.host` 填對方 IP 即可。
+- **Browser Input 不行**——對方要連進來抓 `/overlay`，但 `resolve_bind_host()` 只允許
+  `127.0.0.1`，`features.lan_access` 被刻意忽略。這是 Stage 4 的安全決定，不是疏漏。
+  要支援需明確開關、使用者指定綁定位址、控制頁標示服務已對外；建議**只開 `/overlay`**，
+  控制頁與 API 維持 loopback。**未經使用者指示不得動工。**
+
 ```text
-Stage 5 Phase A（已完成）→ Phase B 真實 vMix 驗收 → v0.3
+Stage 5 Phase A（已完成）→ Phase B 真實 vMix 驗收（同一台）→ v0.3
 ```
