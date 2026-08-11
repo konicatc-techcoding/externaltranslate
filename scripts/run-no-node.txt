@@ -1,0 +1,8 @@
+
+這台機器沒有 npm，前端無法在這裡建置。兩個選擇：
+
+  1. 安裝 Node.js 後重新執行 run.bat
+  2. 在有 Node 的機器上執行 npm install 與 npm run build，
+     再把整個 frontend\dist 資料夾複製到這台的相同位置，
+     然後重新執行 run.bat（偵測到已建置就會直接啟動）
+

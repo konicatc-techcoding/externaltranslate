@@ -87,6 +87,19 @@ IP」都是錯的，已作廢。
   `ui` 欄位據實回報。分得清「還沒建置」與「服務掛了」。
 - 執行期不需要 Node。要在沒有 Node 的機器上跑，把整個 `frontend/dist` 複製過去即可。
 
+**`run.bat` 的兩條硬規則（2026-08-11 使用者實測後才發現，兩個都踩到了）**：
+1. **必須是 CRLF 換行。** 第一版是 LF，cmd 會找不到 label、把行接在一起，錯誤訊息長得像
+   「'?' 不是內部或外部命令」。已加 `.gitattributes`（`*.bat text eol=crlf`）確保任何
+   checkout 都拿到 CRLF。
+2. **批次檔本身必須是純 ASCII。** 中文放進去會亂碼；加了 `chcp 65001` 之後顯示雖然正確，
+   但 **cmd 會算錯下一行的讀取位移**（多位元組字元的已知缺陷），後面的行從字元中間接續，
+   出現 `'ode' 不是內部或外部命令` 這種錯誤。所以中文訊息一律放在 `scripts/run-*.txt`
+   （UTF-8），批次檔用 `type` 印出來——批次剖析器永遠看不到那些位元組。
+   **不要把中文寫回 `run.bat`。**
+
+兩條分支都實測過：有 `frontend/dist` 時走 serve 分支（`uv sync` → 印出網址 → 啟動）；
+沒有 npm 時印出中文說明並以 exit 1 結束。
+
 實測（2026-08-11，真實服務＋瀏覽器）：`/` 與 `/overlay` 皆 200 text/html、
 `/assets/*.js` 200、`/api/settings` 200、`/nonsense` 404 application/json；
 控制台在 8765 開啟後 **WebSocket 同源連上**（`ws://127.0.0.1:8765/ws/captions`），

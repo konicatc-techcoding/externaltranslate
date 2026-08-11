@@ -1,19 +1,4 @@
-* text=auto
-.gitattributes text eol=lf
-.gitignore text eol=lf
-
-*.py text eol=lf
-*.toml text eol=lf
-*.yaml text eol=lf
-*.yml text eol=lf
-*.json text eol=lf
-*.ts text eol=lf
-*.tsx text eol=lf
-*.css text eol=lf
-*.html text eol=lf
-*.md text eol=lf
-*.example text eol=lf
-*.lock text eol=lf
-
+# cmd.exe misparses a batch file with Unix line endings: labels are not found
+# and lines run together. These must arrive as CRLF on every checkout.
 *.bat text eol=crlf
-*.cmd text eol=crlf
+scripts/run-*.txt text eol=crlf
