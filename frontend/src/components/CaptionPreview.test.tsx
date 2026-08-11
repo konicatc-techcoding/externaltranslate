@@ -200,3 +200,63 @@ describe("CaptionPreview", () => {
     expect(box.style.getPropertyValue("--caption-bg")).toBe("rgba(0, 0, 0, 0.5)");
   });
 });
+
+describe("連續滑動與整段換掉", () => {
+  it("下一次滑動在前一次還沒播完時要重新播", () => {
+    // Fragments arrive several times a second. Re-setting the same class does
+    // not restart a CSS animation, so the second scroll would show no motion
+    // and then snap when the first animation's timer removed the class —
+    // which is the jitter. Alternating the animation name restarts it.
+    const { rerender } = render(
+      <CaptionPreview
+        caption={caption({ lines: ["一", "二"] })}
+        maxLines={2}
+        scroll
+      />,
+    );
+    rerender(
+      <CaptionPreview
+        caption={caption({ lines: ["二", "三"] })}
+        maxLines={2}
+        scroll
+      />,
+    );
+    const first = screen.getByTestId("caption-viewport").className;
+
+    rerender(
+      <CaptionPreview
+        caption={caption({ lines: ["三", "四"] })}
+        maxLines={2}
+        scroll
+      />,
+    );
+    const second = screen.getByTestId("caption-viewport").className;
+
+    expect(first).toContain("sliding");
+    expect(second).toContain("sliding");
+    expect(second).not.toBe(first);
+  });
+
+  it("整段被換掉時不滑動", () => {
+    // What `caption.idle_reset_ms` does after a pause: the window drops from
+    // full to one line. Nothing scrolled past the top — the block was
+    // replaced — and animating it drags the new sentence up from below.
+    const { rerender } = render(
+      <CaptionPreview
+        caption={caption({ lines: ["第一行", "第二行", "第三行"] })}
+        maxLines={3}
+        scroll
+      />,
+    );
+    rerender(
+      <CaptionPreview
+        caption={caption({ lines: ["新的一段"] })}
+        maxLines={3}
+        scroll
+      />,
+    );
+    expect(screen.getByTestId("caption-viewport").className).not.toContain(
+      "sliding",
+    );
+  });
+});

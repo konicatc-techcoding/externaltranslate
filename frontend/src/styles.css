@@ -401,7 +401,24 @@ select {
   animation: caption-slide-up var(--caption-scroll-ms, 250ms) ease-out;
 }
 
+/* The same animation under a second name. Re-applying an animation that is
+   already running does nothing, so a line scrolling before the previous slide
+   has finished would not animate at all and would then snap when the class
+   came off. Alternating between the two names restarts it. */
+.caption-box__viewport--sliding-b {
+  animation-name: caption-slide-up-again;
+}
+
 @keyframes caption-slide-up {
+  from {
+    transform: translateY(calc(var(--caption-size) * var(--caption-line-height)));
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes caption-slide-up-again {
   from {
     transform: translateY(calc(var(--caption-size) * var(--caption-line-height)));
   }
