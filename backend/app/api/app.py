@@ -22,6 +22,7 @@ from backend.app.api.routes import (
     settings,
     vmix,
 )
+from backend.app.api.static import mount_frontend
 from backend.app.api.websocket import DEFAULT_POLL_INTERVAL
 from backend.app.api.websocket import router as websocket_router
 from backend.app.audio.devices import SoundDeviceBackend, enumerate_input_devices
@@ -77,8 +78,9 @@ def create_app(
     device_lister: DeviceLister | None = None,
     loopback_lister: LoopbackLister | None = None,
     ws_poll_interval: float = DEFAULT_POLL_INTERVAL,
+    frontend_dist: Path | None = None,
 ) -> FastAPI:
-    """Build the local-only control API.
+    """Build the local-only control API, and serve the page if it is built.
 
     No CORS middleware is installed: the UI is served from the same origin,
     and an open CORS policy would let any page in the browser drive the local
@@ -109,4 +111,6 @@ def create_app(
     app.include_router(pipeline.router)
     app.include_router(vmix.router)
     app.include_router(websocket_router)
+    # Last, so the page can never shadow a route it calls.
+    app.state.frontend_dist = mount_frontend(app, frontend_dist)
     return app

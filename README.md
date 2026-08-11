@@ -268,9 +268,32 @@ bounded drop-oldest queue；唯一的persistent PCM reader位於Gemini sessions�
 容量1的drop-oldest async handoff供當前session sender消費。Rotation不會建立第二個
 `get_pcm_chunk()` consumer，也不建立無界buffer或追送長時間過期音訊。
 
-## 啟動本機應用（Stage 4）
+## 一鍵啟動（正式使用）
 
-開兩個終端機。後端：
+在專案根目錄雙擊 **`run.bat`**，或在終端機執行：
+
+```bash
+./run.bat
+```
+
+它會在前端尚未建置時先建置，然後啟動服務。**只有一個程序、一個埠**：
+
+- 控制台 <http://127.0.0.1:8765/>
+- 字幕頁 <http://127.0.0.1:8765/overlay>
+
+這是要把程式跑在**另一台機器**（例如 vMix 那台）時該用的方式：不需要開兩個終端機，
+執行期也不需要 Node——頁面已經是建置好的靜態檔，由後端自己提供，而且與它呼叫的 API 同源。
+
+那台機器需要的是 **Python 3.11 與 uv**。Node 只有「在該機器建置前端」時才需要；
+若不想在那台裝 Node，可在有 Node 的機器上執行 `npm install && npm run build`，
+再把整個 `frontend/dist` 資料夾複製過去（`run.bat` 偵測到已建置就會直接啟動）。
+
+`frontend/dist` 是建置產物，不進 Git。啟動時印出的 JSON 會回報 `ui` 欄位：
+`null` 代表這個 checkout 還沒建置——API 正常，但開頁面會是 404。
+
+## 啟動本機應用（開發模式）
+
+開發時才需要以下方式；改前端會即時熱更新。開兩個終端機。後端：
 
 ```bash
 uv run externaltranslate-serve

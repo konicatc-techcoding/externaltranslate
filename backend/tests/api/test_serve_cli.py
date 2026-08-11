@@ -18,7 +18,13 @@ def test_serve_binds_loopback_and_reports_port() -> None:
 
     assert exit_code == 0
     payload = json.loads(lines[0])
-    assert payload == {"status": "serving", "host": "127.0.0.1", "port": 8765}
+    # `ui` says whether the built page is being served: an operator who opens
+    # the URL and gets a 404 needs to know the build is missing, not guess.
+    assert payload["status"] == "serving"
+    assert payload["host"] == "127.0.0.1"
+    assert payload["port"] == 8765
+    assert payload["url"] == "http://127.0.0.1:8765/"
+    assert "ui" in payload
     assert captured["host"] == "127.0.0.1"
 
 

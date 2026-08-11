@@ -47,9 +47,20 @@ def main(
         emit(json.dumps({"status": "error", "message": str(exc)}, ensure_ascii=False))
         return 1
 
+    served = app.state.frontend_dist
     emit(
         json.dumps(
-            {"status": "serving", "host": host, "port": port}, ensure_ascii=False
+            {
+                "status": "serving",
+                "host": host,
+                "port": port,
+                "url": f"http://{host}:{port}/",
+                # None means the frontend has not been built in this checkout;
+                # the API works but the page will 404, and the operator should
+                # be told that rather than left guessing.
+                "ui": None if served is None else str(served),
+            },
+            ensure_ascii=False,
         )
     )
     if runner is None:  # pragma: no cover - exercised by the real server only

@@ -71,8 +71,26 @@ IP」都是錯的，已作廢。
 - **這道防線擋不了的**：同區網上偽裝成名單內 IP 的機器（ARP 層的事），以及區網上的被動
   竊聽——`/overlay` 是 HTTP，沒有加密。字幕內容在拓樸 B 下本來就以明文過區網。
 
-**前置條件：一鍵啟動必須先做**——區網那個 app 要能吐出已建置的前端靜態檔，
-目前後端沒有這個能力（開發時是 vite dev server 在服務 `/overlay`）。
+**前置條件：一鍵啟動——2026-08-11 已完成**（見下方）。
+
+### 一鍵啟動（2026-08-11，已實作＋實測）
+
+`backend/app/api/static.py`：後端直接提供 `frontend/dist`，`run.bat` 一鍵建置並啟動。
+**一個程序、一個埠**（127.0.0.1:8765），控制台在 `/`、字幕頁在 `/overlay`。
+
+- **不是 catch-all**：只有 `/` 與 `/overlay` 兩條路由回 `index.html`（`App.tsx` 就是靠
+  `window.location.pathname` 二選一），`/assets` 掛 `StaticFiles`。用 catch-all 的話，
+  打錯的 API 路徑會拿到 HTML，呼叫端變成 JSON parse 失敗而不是看到 404。
+- **掛在所有 router 之後**，頁面不可能蓋掉它自己要呼叫的路由（有測試）。
+- **沒建置不是錯誤**：`frontend/dist` 不存在時 API 照常運作、頁面 404，
+  `app.state.frontend_dist` 為 None，`externaltranslate-serve` 印出的 JSON 多一個
+  `ui` 欄位據實回報。分得清「還沒建置」與「服務掛了」。
+- 執行期不需要 Node。要在沒有 Node 的機器上跑，把整個 `frontend/dist` 複製過去即可。
+
+實測（2026-08-11，真實服務＋瀏覽器）：`/` 與 `/overlay` 皆 200 text/html、
+`/assets/*.js` 200、`/api/settings` 200、`/nonsense` 404 application/json；
+控制台在 8765 開啟後 **WebSocket 同源連上**（`ws://127.0.0.1:8765/ws/captions`），
+console 無錯誤；`/overlay?lines=3` 正確渲染 `.overlay-shell`。
 
 ### Stage 5 Phase B 驗收紀錄（2026-08-11，真實 vMix 28.0.0.42，**在另一台電腦**）
 
