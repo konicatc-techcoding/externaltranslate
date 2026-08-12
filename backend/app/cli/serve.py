@@ -68,7 +68,15 @@ def main(
     if runner is None:  # pragma: no cover - exercised by the real server only
         import uvicorn
 
-        runner = uvicorn.run
+        def runner(app: Any, **kwargs: Any) -> None:
+            # The Server is built here rather than through `uvicorn.run` so the
+            # control page's close button has something to ask. `should_exit`
+            # lets the current reply finish before the loop stops.
+            config = uvicorn.Config(app, **kwargs)
+            server = uvicorn.Server(config)
+            app.state.request_shutdown = lambda: setattr(server, "should_exit", True)
+            server.run()
+
     runner(app, host=host, port=port, log_level="info")
     return 0
 

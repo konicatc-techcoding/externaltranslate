@@ -57,8 +57,18 @@ def _default_settings() -> dict[str, object]:
     return load_settings(default_settings_path(), None, None)
 
 
-def _default_prerequisites() -> list[PrerequisiteResult]:
-    return PrerequisiteChecker().stage0_report()
+def _default_prerequisites(runtime: PipelineRuntime) -> list[PrerequisiteResult]:
+    """Report the environment, including what this run has actually proven.
+
+    The runtime is passed in because "is the audio source usable" cannot be
+    answered by enumeration alone, and the only thing that ever answers it is a
+    translation that produced PCM.
+    """
+    audio = runtime.settings.get("audio") or {}
+    return PrerequisiteChecker(
+        enabled_audio_source=audio.get("source_kind"),
+        verified_sources=runtime.verified_audio_sources,
+    ).stage0_report()
 
 
 def _default_devices() -> list[AudioDeviceInfo]:
@@ -94,7 +104,8 @@ def create_app(
 
     app.dependency_overrides[get_runtime] = lambda: active_runtime
     app.dependency_overrides[get_prerequisite_reporter] = (
-        lambda: prerequisite_reporter or _default_prerequisites
+        lambda: prerequisite_reporter
+        or (lambda: _default_prerequisites(active_runtime))
     )
     app.dependency_overrides[get_device_lister] = (
         lambda: device_lister or _default_devices
@@ -109,6 +120,7 @@ def create_app(
     app.include_router(settings.router)
     app.include_router(credentials.router)
     app.include_router(pipeline.router)
+    app.include_router(pipeline.shutdown_router)
     app.include_router(vmix.router)
     app.include_router(websocket_router)
     # Last, so the page can never shadow a route it calls.

@@ -141,6 +141,10 @@ export const api = {
       { method: "DELETE" },
     ),
 
+  /** Stops translation, then ends the service process. */
+  shutdown: () =>
+    request<{ message: string }>("/api/shutdown", { method: "POST" }),
+
   clearCaptions: () =>
     request<{ message: string }>("/api/captions/clear", { method: "POST" }),
 

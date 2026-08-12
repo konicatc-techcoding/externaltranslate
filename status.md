@@ -28,6 +28,43 @@
    （**只有實際硬體需要時才做，目前沒有需要**）。**皆未經指示，不得自行動工。**
 6. Playwright overlay 驗證**已完成**（2026-08-12），見下方。
 
+### 三項功能（2026-08-12，使用者提出，已實作＋實測）
+
+**1. 關閉程式按鈕**（上方欄位最右、紅色、按下跳確認視窗——使用者指定的形狀）。
+- `POST /api/shutdown`：**先 `await runtime.stop()` 再請求退出**。不停就退，vMix Title
+  會停著最後一句字幕，而唯一能清掉它的程序已經不在了。
+- **退出只是「請求」**：直接在 route 裡關掉 server，回應還沒送出就斷線，頁面會顯示請求失敗
+  而不是「已關閉」。改為設 `server.should_exit = True`，讓目前這筆回應先送完。
+- `serve.py` 因此改為自己建 `uvicorn.Server` 並把 `request_shutdown` 掛到 `app.state`；
+  沒有這個 hook 的執行方式回 503 並說「請直接關閉服務視窗」，不假裝成功。
+- 前端用原生 `<dialog showModal>`（焦點鎖定與 Esc 都是免費的）。**這裡用 modal 是對的**，
+  與 vMix 停用開關刻意不用 modal 不衝突：那邊按完還要繼續操作，這邊按完就沒有頁面了。
+  jsdom 沒有 `showModal`，在 `src/test/setup.ts` 補了 shim——**不因為 jsdom 缺功能就把產品做小**。
+
+**2. vMix input 選單顯示序號**（`1: 字幕標題`）。
+真正的理由不是對照方便，而是**名稱可以重複**——兩個都叫 `Title` 的 GT Title 在舊清單裡
+長得一模一樣。**序號只顯示、絕不儲存**：加減 input 時會位移，這正是存 GUID 的原因。
+
+**3. 「尚未檢查」的音訊項目**。
+先確認那不是 bug：探測其實成功了（真的列舉到裝置），但刻意標成「尚未檢查」而非「就緒」，
+因為**列舉到裝置 ≠ 開得起來收得到 PCM**。這是 Stage 0 立的規矩。
+- **真正的缺陷是文案**：它叫使用者去跑 `externaltranslate-audio-smoke`，
+  而那個命令**不在打包版裡**。已改成「開始翻譯後若順利收到音訊，這一項會自動轉為就緒」。
+- **改用真實使用來滿足這個檢查**：`PipelineRuntime.verified_audio_sources` 記錄
+  「這個來源這次執行真的產出過 PCM」（`CaptureStats.pcm_chunks > 0`），
+  `PrerequisiteChecker(verified_sources=...)` 據此轉為就緒。
+- **刻意不持久化**：設定檔是拿來複製到別台的，而這是關於**這台**硬體的事實。
+- 兩種來源分開記錄；證明了麥克風不代表系統輸出也行。
+- 這個訊號與延後的裝置看門狗是同一個，等於順手把管線鋪好。
+
+**順帶修掉的真實 bug：`index.html` 被瀏覽器快取。**
+測按鈕時發現頁面載入的是**舊的 bundle**。asset 檔名帶 content hash 可以永久快取，
+但 HTML 不行——升級後被快取的 HTML 會去要已經被刪掉的舊 asset，整頁載不起來。
+已對 `/` 與 `/overlay` 加上 `Cache-Control: no-store`（有測試）。
+
+實測（2026-08-12，真實服務＋瀏覽器）：按下關閉程式 → modal 開啟（`:modal` 為真）→
+確定關閉 → `POST /api/shutdown` 200 → uvicorn 乾淨關閉 → 程序 exit 0 → 連接埠釋放。
+
 ### Stage 6：PyInstaller onedir（2026-08-12，已實作＋實機驗證）
 
 使用者決定**先做 onedir，OK 之後再考慮 Inno Setup**。

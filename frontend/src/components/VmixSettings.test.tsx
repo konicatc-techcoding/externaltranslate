@@ -248,3 +248,38 @@ describe("停用 vMix 輸出", () => {
     expect(onChange).toHaveBeenLastCalledWith({ enabled: true });
   });
 });
+
+describe("input 清單", () => {
+  it("顯示 vMix 的序號，名稱重複時才分得出來", async () => {
+    const user = userEvent.setup();
+    const twin: VmixInputItem = { ...TITLE, guid: "other-guid", number: 4 };
+    const onChange = vi.fn();
+    render(
+      <VmixSettings
+        settings={DEFAULT_VMIX_SETTINGS}
+        inputs={[TITLE, twin]}
+        maxLines={2}
+        overlayUrl="http://localhost:8765/overlay"
+        notice={null}
+        onChange={onChange}
+        onRefresh={vi.fn()}
+        onTest={vi.fn()}
+        onClearFields={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("option", { name: "1: 字幕標題" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "4: 字幕標題" })).toBeInTheDocument();
+
+    // The number is for reading only: it shifts when inputs are added or
+    // removed, which is why the GUID is what gets stored.
+    await user.selectOptions(
+      screen.getByLabelText("輸出到哪個 input"),
+      "other-guid",
+    );
+    expect(onChange).toHaveBeenLastCalledWith({
+      input_guid: "other-guid",
+      input_name: "字幕標題",
+    });
+  });
+});

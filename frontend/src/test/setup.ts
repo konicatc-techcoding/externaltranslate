@@ -8,3 +8,21 @@ import { afterEach } from "vitest";
 afterEach(() => {
   cleanup();
 });
+
+// jsdom implements <dialog> as an element but not its modal behaviour. The
+// confirmation dialog uses `showModal` for the focus trap and Esc handling a
+// real browser gives for free, so the shim is here rather than the product
+// being written down to what jsdom supports.
+if (typeof HTMLDialogElement !== "undefined") {
+  HTMLDialogElement.prototype.showModal ??= function showModal(
+    this: HTMLDialogElement,
+  ) {
+    this.open = true;
+  };
+  HTMLDialogElement.prototype.close ??= function close(
+    this: HTMLDialogElement,
+  ) {
+    this.open = false;
+    this.dispatchEvent(new Event("close"));
+  };
+}

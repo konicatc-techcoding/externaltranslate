@@ -464,3 +464,45 @@ select {
   min-height: 100vh;
   padding: 2rem;
 }
+
+/* Ends the program. Pushed to the far right of the top strip and coloured as
+   a warning: it is the only control on the page whose effect cannot be undone
+   from the page. */
+.app-top__quit {
+  margin-left: auto;
+  align-self: center;
+}
+
+.button-danger {
+  border: 1px solid #a4353a;
+  background: #7f2427;
+  color: #fdf2f2;
+  font-weight: 600;
+}
+
+.button-danger:hover {
+  background: #982c30;
+}
+
+.confirm-dialog {
+  max-width: 26rem;
+  padding: 1.25rem;
+  border: 1px solid #2a3a51;
+  border-radius: 10px;
+  background: #17212f;
+  color: #e6edf6;
+}
+
+.confirm-dialog::backdrop {
+  background: rgba(3, 8, 15, 0.65);
+}
+
+.confirm-dialog h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.05rem;
+}
+
+.confirm-dialog p {
+  margin: 0 0 1rem;
+  line-height: 1.6;
+}

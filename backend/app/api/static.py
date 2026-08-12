@@ -41,7 +41,12 @@ def mount_frontend(app: FastAPI, dist: Path | None = None) -> Path | None:
         app.mount("/assets", StaticFiles(directory=assets), name="assets")
 
     async def page() -> FileResponse:
-        return FileResponse(index)
+        # The document must never be cached. Asset filenames carry a content
+        # hash, so a cached `index.html` keeps asking for the previous build's
+        # files — which an upgrade has deleted, leaving a page that either
+        # shows the old UI or fails to load at all. The assets themselves are
+        # safe to cache precisely because their names change.
+        return FileResponse(index, headers={"Cache-Control": "no-store"})
 
     for path in _PAGES:
         app.add_api_route(path, page, methods=["GET"], include_in_schema=False)
