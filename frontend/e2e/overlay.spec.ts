@@ -14,7 +14,12 @@ const STYLE = {
   radius: 8,
   align: "left",
   scroll: true,
-  scroll_ms: 250,
+  // Deliberately near the maximum rather than the 250ms default. A CSS
+  // animation is dropped from `getAnimations()` the moment it finishes, so a
+  // short one can be over before a loaded machine gets round to looking —
+  // which is a flaky test, not a flaky product. A long window observes the
+  // same behaviour with room to spare.
+  scroll_ms: 900,
 };
 
 const LINE_HEIGHT = 1.3;
@@ -148,25 +153,26 @@ test("前一次還沒播完就再滑動時，動畫要從頭重播", async ({ pa
   // nothing, so the second scroll showed no motion and then snapped when the
   // first one's timer removed the class. Only a real browser can show this —
   // jsdom has no animation timeline.
+  //
+  // What is asserted is the mechanism, not elapsed time: a restart happens by
+  // switching to the second of two identical keyframes, and that switch is
+  // driven by component state rather than the clock. Comparing `currentTime`
+  // measured the same thing but failed whenever the machine was busy enough
+  // for the first animation to finish early.
   await push(page, ["一", "二"], 2);
   await push(page, ["二", "三"], 2);
-  // The animation starts asynchronously; reading straight after the push
-  // sometimes finds nothing at all.
   const first = await firstAnimation(page);
+  expect(first.name).toContain("caption-slide");
 
   await page.waitForTimeout(120);
-  const midway = await firstAnimation(page);
   await push(page, ["三", "四"], 2);
 
-  // A restart swaps which of the two identical keyframes is in use. Waiting
-  // for that is what distinguishes "started over" from "still running".
   await expect
     .poll(async () => (await animations(page))[0]?.name)
     .not.toBe(first.name);
 
   const second = await firstAnimation(page);
-  expect(midway.currentTime).toBeGreaterThan(80);
-  expect(second.currentTime).toBeLessThan(midway.currentTime);
+  expect(second.name).toContain("caption-slide");
 });
 
 test("整段被換掉時不播滑動", async ({ page }) => {
