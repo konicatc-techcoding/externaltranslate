@@ -168,6 +168,7 @@ export const zhTW = {
     note:
       "送到 vMix 的另一個 Title，與即時翻譯同時進行、互不影響。" +
       "送出後會一直停留在畫面上，直到再送一次或按清空。",
+    summaryNoTarget: "尚未選擇 Title",
     target: "輸出到哪個 input",
     refreshInputs: "從 vMix 讀取 input",
     noInputs: "尚未讀取到 input；請確認 vMix 已啟動、上方 vMix 輸出的主機設定正確，再按讀取。",

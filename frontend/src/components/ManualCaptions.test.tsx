@@ -155,10 +155,11 @@ describe("輸出目標", () => {
 
   it("還沒選 Title 時面板照樣顯示，只是送不出去", () => {
     // Hiding the panel would leave an operator looking for a feature that is
-    // there, with nothing saying what is missing.
+    // there, with nothing saying what is missing. The panel's name comes from
+    // the collapsible around it, so what proves it rendered is the controls.
     renderPanel({ target: null });
 
-    expect(screen.getByText("手動字幕")).toBeInTheDocument();
+    expect(screen.getByLabelText("輸出到哪個 input")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "發送 ON AIR" })).toBeDisabled();
     expect(screen.getByText(/請選一個 Title/)).toBeInTheDocument();
   });

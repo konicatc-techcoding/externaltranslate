@@ -38,6 +38,15 @@ export type UiState =
   | "stopping"
   | "error";
 
+/** What the manual caption panel says about itself while folded away. */
+export function manualSummary(vmix: VmixConfig): string {
+  if (vmix.manual_input_guid === null) {
+    return zhTW.manual.summaryNoTarget;
+  }
+  const prepared = vmix.manual_slots.filter((text) => text.trim() !== "").length;
+  return `${vmix.manual_input_name ?? ""}・${prepared} 則`;
+}
+
 export function deriveUiState(input: {
   loading: boolean;
   stopping: boolean;
@@ -352,6 +361,12 @@ export function ControlPage() {
       ) : null}
 
       {settings !== null ? (
+        <CollapsiblePanel
+          title={zhTW.manual.title}
+          summary={manualSummary(settings.vmix)}
+          open={!collapsed.has("manual")}
+          onOpenChange={(open) => togglePanel("manual", open)}
+        >
         <ManualCaptions
           inputs={vmixInputs}
           target={settings.vmix.manual_input_guid}
@@ -418,6 +433,7 @@ export function ControlPage() {
               .finally(() => setManualBusy(false));
           }}
         />
+        </CollapsiblePanel>
       ) : null}
       </section>
 
