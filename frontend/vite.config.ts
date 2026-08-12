@@ -28,6 +28,10 @@ export default defineConfig(({ command }) => ({
     },
   },
   test: {
+    // Playwright specs live in e2e/ and would otherwise be swept up by
+    // vitest's default `**/*.spec.ts`, where `test.beforeEach` from a
+    // different runner fails in confusing ways.
+    exclude: ["node_modules/**", "dist/**", "e2e/**"],
     environment: "jsdom",
     pool: "threads",
     // Each jsdom worker is expensive on this machine; unbounded parallelism

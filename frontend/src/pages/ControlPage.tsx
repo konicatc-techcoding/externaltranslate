@@ -9,6 +9,7 @@ import { CaptionPreview } from "../components/CaptionPreview";
 import { CaptionSettings, captionSummary } from "../components/CaptionSettings";
 import { CollapsiblePanel } from "../components/CollapsiblePanel";
 import { ComponentStatusList } from "../components/ComponentStatusList";
+import { ShutdownButton } from "../components/ShutdownButton";
 import { PrerequisitePanel } from "../components/PrerequisitePanel";
 import { TranslationClock } from "../components/TranslationClock";
 import { VmixSettings } from "../components/VmixSettings";
@@ -79,6 +80,9 @@ export function ControlPage() {
   const [loading, setLoading] = useState(true);
   const [stopping, setStopping] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The service is going away; the socket will drop and the page will go
+  // stale, so say why rather than letting it look like a fault.
+  const [closed, setClosed] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
   const [presets, setPresets] = useState<CaptionPreset[]>([]);
   const [vmixInputs, setVmixInputs] = useState<VmixInputItem[]>([]);
@@ -201,7 +205,24 @@ export function ControlPage() {
         <div className="app-top__components">
           <ComponentStatusList components={status.components} stale={stale} />
         </div>
+        <div className="app-top__quit">
+          <ShutdownButton
+            running={status.running}
+            onConfirm={() => {
+              void api
+                .shutdown()
+                .then(() => setClosed(true))
+                .catch(() => setError(zhTW.shutdown.failed));
+            }}
+          />
+        </div>
       </header>
+
+      {closed ? (
+        <p role="status" className="panel__notice app-alert">
+          {zhTW.shutdown.done}
+        </p>
+      ) : null}
 
       {error !== null ? (
         <p role="alert" className="panel__error app-alert">

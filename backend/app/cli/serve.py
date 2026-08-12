@@ -8,6 +8,7 @@ from typing import Any
 
 from backend.app.api.app import create_app, resolve_bind_host
 from backend.app.config import ConfigurationError, load_settings
+from backend.app.resources import default_settings_path, user_settings_path
 from backend.app.services.runtime import PipelineRuntime
 
 
@@ -28,13 +29,14 @@ def main(
     runner: Callable[..., None] | None = None,
 ) -> int:
     args = _parser().parse_args(argv)
-    project_root = Path(__file__).resolve().parents[3]
     try:
         # Settings the operator changed last time live here; the same file
-        # is what they copy to move a setup to another machine.
-        user_config = args.user_config or project_root / "config" / "user.yaml"
+        # is what they copy to move a setup to another machine. In a
+        # packaged build it lives under %LOCALAPPDATA%, not beside the
+        # program, which may be installed somewhere read-only.
+        user_config = args.user_config or user_settings_path()
         settings: dict[str, Any] = load_settings(
-            project_root / "config" / "default.yaml", user_config, None
+            default_settings_path(), user_config, None
         )
         host = resolve_bind_host(args.host)
         port = args.port if args.port is not None else int(settings["server"]["port"])
@@ -66,7 +68,15 @@ def main(
     if runner is None:  # pragma: no cover - exercised by the real server only
         import uvicorn
 
-        runner = uvicorn.run
+        def runner(app: Any, **kwargs: Any) -> None:
+            # The Server is built here rather than through `uvicorn.run` so the
+            # control page's close button has something to ask. `should_exit`
+            # lets the current reply finish before the loop stops.
+            config = uvicorn.Config(app, **kwargs)
+            server = uvicorn.Server(config)
+            app.state.request_shutdown = lambda: setattr(server, "should_exit", True)
+            server.run()
+
     runner(app, host=host, port=port, log_level="info")
     return 0
 

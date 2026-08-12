@@ -3,6 +3,7 @@ from __future__ import annotations
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -13,7 +14,7 @@ from backend.app.prerequisites.checker import (
     LoopbackProbeResult,
     PrerequisiteChecker,
 )
-from backend.app.prerequisites.models import PrerequisiteStatus
+from backend.app.prerequisites.models import PrerequisiteResult, PrerequisiteStatus
 
 
 @dataclass(frozen=True)
@@ -101,10 +102,12 @@ def test_stage0_report_marks_required_tools_ready() -> None:
     assert report["vmix"].status is PrerequisiteStatus.OPTIONAL
     assert report["audio"].status is PrerequisiteStatus.NOT_CHECKED
     assert report["audio"].version == "sounddevice 0.5.5 / PortAudio V19.7.0"
-    assert "smoke" in report["audio"].action
+    # It says what is still unproven and how it gets proven, without naming a
+    # CLI tool that a packaged build does not ship.
+    assert "尚未實際擷取過" in report["audio"].action
     assert report["wasapi_loopback"].status is PrerequisiteStatus.NOT_CHECKED
     assert report["wasapi_loopback"].version == "PyAudioWPatch 0.2.12.8"
-    assert "smoke" in report["wasapi_loopback"].action
+    assert "尚未實際擷取過" in report["wasapi_loopback"].action
 
 
 def test_stage0_report_gives_traditional_chinese_actions_for_missing_tools() -> None:
@@ -242,3 +245,86 @@ def test_default_probe_separates_vmix_location_from_unavailable_version(
 
     assert probe.installation_path("vmix") == str(vmix_path)
     assert probe.command_version("vmix", ()) is None
+
+
+def _probe_ready_audio() -> Any:
+    from backend.app.prerequisites.checker import AudioProbeResult
+
+    class Ready:
+        def inspect(self) -> AudioProbeResult:
+            return AudioProbeResult(
+                ready=True,
+                version="sounddevice 0.5.5 / PortAudio",
+                input_device_count=3,
+                detail="已列舉 3 個 Windows 音訊輸入 endpoint。",
+            )
+
+    return Ready()
+
+
+def _probe_ready_loopback() -> Any:
+    from backend.app.prerequisites.checker import LoopbackProbeResult
+
+    class Ready:
+        def inspect(self) -> LoopbackProbeResult:
+            return LoopbackProbeResult(
+                ready=True,
+                version="PyAudioWPatch",
+                endpoint_count=1,
+                detail="已列舉 1 個 Windows WASAPI loopback render endpoints。",
+            )
+
+    return Ready()
+
+
+def _result(report: list[PrerequisiteResult], identifier: str) -> PrerequisiteResult:
+    return next(item for item in report if item.identifier == identifier)
+
+
+def test_an_enumerated_but_unused_device_is_not_claimed_as_verified() -> None:
+    # Seeing a device is not the same as capturing from it. Saying "ready"
+    # here would throw away the distinction the whole panel exists for.
+    report = PrerequisiteChecker(
+        audio_probe=_probe_ready_audio(),
+        loopback_probe=_probe_ready_loopback(),
+        enabled_audio_source="input_device",
+    ).stage0_report()
+
+    assert _result(report, "audio").status is PrerequisiteStatus.NOT_CHECKED
+
+
+def test_the_action_never_names_a_command_a_packaged_build_lacks() -> None:
+    # The CLI smoke tools are not in the onedir bundle, so telling an operator
+    # to run one is an instruction they cannot follow.
+    report = PrerequisiteChecker(
+        audio_probe=_probe_ready_audio(),
+        loopback_probe=_probe_ready_loopback(),
+        enabled_audio_source="input_device",
+    ).stage0_report()
+
+    for identifier in ("audio", "wasapi_loopback"):
+        assert "externaltranslate-" not in _result(report, identifier).action
+
+
+def test_capturing_for_real_turns_the_row_ready() -> None:
+    report = PrerequisiteChecker(
+        audio_probe=_probe_ready_audio(),
+        loopback_probe=_probe_ready_loopback(),
+        enabled_audio_source="input_device",
+        verified_sources=frozenset({"input_device"}),
+    ).stage0_report()
+
+    audio = _result(report, "audio")
+    assert audio.status is PrerequisiteStatus.READY
+    assert "實際" in audio.detail
+
+
+def test_proving_one_source_says_nothing_about_the_other() -> None:
+    report = PrerequisiteChecker(
+        audio_probe=_probe_ready_audio(),
+        loopback_probe=_probe_ready_loopback(),
+        enabled_audio_source="wasapi_loopback",
+        verified_sources=frozenset({"input_device"}),
+    ).stage0_report()
+
+    assert _result(report, "wasapi_loopback").status is PrerequisiteStatus.NOT_CHECKED

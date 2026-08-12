@@ -212,6 +212,7 @@ class PrerequisiteChecker:
         audio_probe: AudioPrerequisiteProbe | None = None,
         loopback_probe: LoopbackPrerequisiteProbe | None = None,
         enabled_audio_source: str | None = None,
+        verified_sources: frozenset[str] = frozenset(),
     ) -> None:
         if enabled_audio_source not in {None, "input_device", "wasapi_loopback"}:
             raise ValueError(
@@ -221,6 +222,10 @@ class PrerequisiteChecker:
         self._audio_probe = audio_probe or DefaultAudioPrerequisiteProbe()
         self._loopback_probe = loopback_probe or DefaultLoopbackPrerequisiteProbe()
         self._enabled_audio_source = enabled_audio_source
+        # Source kinds that have actually produced PCM in this process.
+        # Enumeration alone is not a functional check, and the panel is
+        # not allowed to pretend otherwise.
+        self._verified_sources = verified_sources
         self._python_version = python_version or (
             sys.version_info.major,
             sys.version_info.minor,
@@ -253,11 +258,12 @@ class PrerequisiteChecker:
     def _loopback_result(self) -> PrerequisiteResult:
         result = self._loopback_probe.inspect()
         disabled = self._enabled_audio_source == "input_device"
+        verified = "wasapi_loopback" in self._verified_sources
         status = (
             PrerequisiteStatus.OPTIONAL
             if disabled or (not result.ready and self._enabled_audio_source is None)
             else (
-                PrerequisiteStatus.NOT_CHECKED
+                (PrerequisiteStatus.READY if verified else PrerequisiteStatus.NOT_CHECKED)
                 if result.ready
                 else PrerequisiteStatus.MISSING
             )
@@ -268,16 +274,28 @@ class PrerequisiteChecker:
             status=status,
             required_for="Stage 1.2",
             version=result.version,
-            detail=result.detail,
+            detail=(
+                f"{result.detail}本次執行已實際擷取到音訊。"
+                if verified
+                else result.detail
+            ),
             action=(
                 "目前未啟用 WASAPI loopback；切換來源前再執行功能驗證。"
                 if disabled
                 else (
-                    "執行 externaltranslate-loopback-smoke，確認 open、PCM、stop 與 restart。"
-                    if result.ready
+                    ""
+                    if verified
                     else (
-                        "確認 Windows 預設輸出可用、音訊服務正常，"
-                        "並重新執行 loopback endpoint 列舉。"
+                        # Deliberately not "run the smoke CLI": that command is
+                        # not in the packaged build, so it is an instruction the
+                        # operator cannot follow.
+                        "已偵測到系統輸出，但尚未實際擷取過。"
+                        "按下開始翻譯後若順利收到音訊，這一項會自動轉為就緒。"
+                        if result.ready
+                        else (
+                            "確認 Windows 預設輸出可用、音訊服務正常，"
+                            "並重新執行 loopback endpoint 列舉。"
+                        )
                     )
                 )
             ),
@@ -286,11 +304,12 @@ class PrerequisiteChecker:
     def _audio_result(self) -> PrerequisiteResult:
         result = self._audio_probe.inspect()
         disabled = self._enabled_audio_source == "wasapi_loopback"
+        verified = "input_device" in self._verified_sources
         status = (
             PrerequisiteStatus.OPTIONAL
             if disabled or (not result.ready and self._enabled_audio_source is None)
             else (
-                PrerequisiteStatus.NOT_CHECKED
+                (PrerequisiteStatus.READY if verified else PrerequisiteStatus.NOT_CHECKED)
                 if result.ready
                 else PrerequisiteStatus.MISSING
             )
@@ -301,14 +320,23 @@ class PrerequisiteChecker:
             status=status,
             required_for="Stage 1",
             version=result.version,
-            detail=result.detail,
+            detail=(
+                f"{result.detail}本次執行已實際擷取到音訊。"
+                if verified
+                else result.detail
+            ),
             action=(
                 "目前未啟用 input device；切換來源前再執行功能驗證。"
                 if disabled
                 else (
-                    "執行 externaltranslate-audio-smoke，確認 open、PCM、stop 與 restart。"
-                    if result.ready
-                    else "連接麥克風或 Audio Interface，確認 Windows driver 正常後重新檢查。"
+                    ""
+                    if verified
+                    else (
+                        "已偵測到輸入裝置，但尚未實際擷取過。"
+                        "按下開始翻譯後若順利收到音訊，這一項會自動轉為就緒。"
+                        if result.ready
+                        else "連接麥克風或 Audio Interface，確認 Windows driver 正常後重新檢查。"
+                    )
                 )
             ),
         )

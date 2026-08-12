@@ -37,9 +37,11 @@ ExternalTranslate 是 Windows 本機優先的即時翻譯字幕應用程式。�
   時發布狀態；CLI新增`--status-events`與`--caption-state`。真實Gemini smoke尚未完成前，
   不視為Stage 3.2驗收通過。
 
-- **Stage 5 Phase A（待實機驗收）**：vMix HTTP API 輸出——`GET /api/` 探索 input、
-  `SetText` 寫入 GT Title 文字欄位、節流與 bounded backoff、停止時清空欄位，以及控制頁的
-  vMix 面板。**已用假 vMix 走真實 HTTP 驗證，尚未在真的 vMix 上跑過**，因此不算 Stage 5 完成。
+- **Stage 5（已完成，2026-08-12 通過真實 vMix 驗收）**：vMix HTTP API 輸出——`GET /api/`
+  探索 input、`SetText` 寫入 GT Title 文字欄位、節流與 bounded backoff、停止時清空欄位，
+  以及控制頁的 vMix 面板。實機驗證項目：GT Title 與 `/overlay` 斷行一致、停止翻譯後兩邊
+  清空、翻譯中強制關閉 vMix 後翻譯續行且 vMix 回來自動接上、Browser Input 實際顯示。
+  **Browser Input 只在「程式與 vMix 同一台」時可用**（見下方 vMix 輸出一節）。
 
 目前不會：
 
@@ -109,6 +111,25 @@ npm --prefix frontend test -- --run
 
 ```bash
 npm --prefix frontend run build
+```
+
+### Overlay 瀏覽器驗證（Playwright）
+
+```bash
+npm run test:e2e
+```
+
+它會先 `vite build`，用 `vite preview` 服務**正式建置的頁面**，再以 Chromium 跑
+`frontend/e2e/`。**字幕 socket 在頁面裡被換成假的**，所以不需要後端、API Key 或麥克風，
+而且測試能決定每一筆字幕什麼時候到——那正是「連續兩次滑動」這種時序才測得出來的東西。
+
+驗的是 **jsdom 驗不到的**：真實的版面尺寸，以及真實的動畫時間軸
+（`getAnimations()`）。**刻意不做像素快照比對**——換個字型就會壞，而且壞了也說不出原因。
+
+第一次執行需要下載 Chromium（約 115 MB）：
+
+```bash
+npx playwright install chromium
 ```
 
 ### Prerequisite CLI smoke test
@@ -268,7 +289,45 @@ bounded drop-oldest queue；唯一的persistent PCM reader位於Gemini sessions�
 容量1的drop-oldest async handoff供當前session sender消費。Rotation不會建立第二個
 `get_pcm_chunk()` consumer，也不建立無界buffer或追送長時間過期音訊。
 
-## 一鍵啟動（正式使用）
+## 打包成獨立資料夾（onedir）
+
+```bash
+PYTHONPATH='' uv run python scripts/build_windows.py
+```
+
+產出 `dist/ExternalTranslate/`（約 72 MB）。**把整個資料夾複製到目標機器，執行
+`ExternalTranslate.exe` 即可**——那台**不需要 Python、不需要 Node、不需要 uv**。
+
+它會啟動服務並開啟預設瀏覽器；`--no-browser` 可停用，`--port` 可換埠。
+**關掉主控台視窗就會停止服務**，或用控制台右上角的紅色「關閉程式」按鈕（會先跳確認）。
+保留主控台是刻意的：它會印出網址，啟動失敗時也看得到原因。
+
+關閉時**會先停止翻譯再退出**——不然 vMix Title 上會停著最後一句字幕，而唯一能清掉它的
+程序已經不在了。
+
+**沒有原生視窗（pywebview）**，這一版刻意不做：原生視窗需要 WebView2 執行環境，而本程式
+不替使用者安裝任何執行環境。要做的話會排在安裝程式那一輪。
+
+再開一次會偵測到連接埠已被佔用，印出「可能已經在執行中」並結束，而不是丟出 traceback。
+
+設定檔的位置**與從原始碼執行時不同**：
+
+| | 從原始碼執行 | 打包後 |
+|---|---|---|
+| 預設值（唯讀） | `config/default.yaml` | `_internal/config/default.yaml` |
+| 使用者設定 | `config/user.yaml` | `%LOCALAPPDATA%\ExternalTranslate\config\user.yaml` |
+| 字幕預設 | `config/caption-presets.json` | 同上目錄 |
+
+打包後改寫入 `%LOCALAPPDATA%`，因為程式目錄可能唯讀（Program Files 就是），
+而且**升級時直接換掉整個資料夾也不會弄丟設定**。
+
+這台沒有 Node、但已有建置好的 `frontend/dist` 時：
+
+```bash
+PYTHONPATH='' uv run python scripts/build_windows.py --skip-frontend
+```
+
+## 一鍵啟動（從原始碼執行）
 
 在專案根目錄雙擊 **`run.bat`**，或在終端機執行：
 
@@ -521,11 +580,26 @@ OBS Browser Source去背；字幕框自己的底色由`bg`與`opacity`決定。
 `lines`**只覆寫這個 overlay 顯示幾行，不改後端斷行**——因此可以同時開兩個高度不同的
 Browser Input 吃同一份字幕。要改每行字數請用控制頁或 caption-layout API。
 
-## vMix 輸出（Stage 5 Phase A，待實機驗收）
+## vMix 輸出（Stage 5，已通過真實 vMix 驗收）
 
 字幕會送到兩個地方：**Browser Input** 直接吃 `/overlay`，**GT Title** 由後端用
 `SetText` 寫入文字欄位。兩者共用同一份 `CaptionState.lines`，所以換行位置一定一致——
-GT Title 是純文字欄位，沒有瀏覽器可以排版，這是唯一能讓兩個畫面一致的做法。
+GT Title 是純文字欄位，沒有瀏覽器可以排版，這是唯一能讓兩個畫面一致的做法。實機已確認
+兩邊斷行相同。
+
+### 兩者的適用範圍不一樣
+
+| | 程式與 vMix 同一台 | vMix 在另一台 |
+|---|---|---|
+| **GT Title** | 可用 | **可用**——我們主動連出去，`vmix.host` 填對方 IP |
+| **Browser Input** | 可用 | **不可用** |
+
+Browser Input 需要 vMix 那台**連進來**抓 `/overlay`，而服務只綁 `127.0.0.1`
+（Stage 4 的刻意決定：把服務攤上網路，等於把這台機器聽得到的聲音也攤上去）。
+所以**程式跑在別台時請用 GT Title**。
+
+GT Title 沒有捲動動畫——`SetText` 是直接換字。要滑動效果就得用 Browser Input，
+也就是要跟 vMix 同一台。
 
 在控制頁的「vMix 輸出」面板設定：
 

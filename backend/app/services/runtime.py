@@ -50,6 +50,7 @@ from backend.app.config import (
 from backend.app.outputs.base import CaptionOutput, NullOutput
 from backend.app.outputs.vmix import VmixClient
 from backend.app.outputs.vmix_output import OutputState, VmixOutput
+from backend.app.resources import preset_store_path
 from backend.app.services.translation_pipeline import TranslationPipeline
 from backend.app.status.caption_status import publish_caption_status
 from backend.app.status.models import (
@@ -188,9 +189,9 @@ class PipelineRuntime:
         self._vmix_notice: str | None = None
         self._vmix_client_factory = vmix_client_factory
         self._vmix_output: CaptionOutput = NullOutput()
-        self._preset_store = preset_store or PresetStore(
-            Path(__file__).resolve().parents[3] / "config" / "caption-presets.json"
-        )
+        # Source kinds proven to actually capture, this process only.
+        self._verified_sources: set[str] = set()
+        self._preset_store = preset_store or PresetStore(preset_store_path())
 
         self._api_key: str | None = None
         self._status_store = StatusStore()
@@ -870,6 +871,9 @@ class PipelineRuntime:
         except asyncio.CancelledError:  # pragma: no cover - defensive
             pass
         finally:
+            # Last chance: the source is about to be released, and a run
+            # with no UI polling it would otherwise prove nothing.
+            self._note_capture_proven()
             self._task = None
             self._stop_event = None
             self._source = None
@@ -883,7 +887,34 @@ class PipelineRuntime:
             return self._run_elapsed
         return time.monotonic() - started_at
 
+    @property
+    def verified_audio_sources(self) -> frozenset[str]:
+        """Source kinds that have actually produced PCM in this process.
+
+        Enumerating a device only shows that Windows can see it. Producing PCM
+        exercises the whole path — open, callback, convert, queue — which is
+        what the environment panel means by a check having been run.
+
+        Deliberately not persisted: the settings file is meant to be copied to
+        another machine, and this is a fact about *this* machine's hardware.
+        """
+        return frozenset(self._verified_sources)
+
+    def _note_capture_proven(self) -> None:
+        source = self._source
+        if source is None:
+            return
+        try:
+            produced = source.stats.pcm_chunks
+        except Exception:
+            return  # a source that cannot report stats simply proves nothing
+        if produced > 0:
+            self._verified_sources.add(str(self._settings["audio"]["source_kind"]))
+
     def snapshot(self) -> RuntimeSnapshot:
+        # Cheap enough to check on every snapshot, and this is the one call
+        # made regularly while translating.
+        self._note_capture_proven()
         source = self._source
         return RuntimeSnapshot(
             elapsed_seconds=self.elapsed_seconds,

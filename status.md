@@ -10,22 +10,131 @@
 
 ## 0. 下一步（Next Action）
 
-1. **滑動抖動的第二輪修正待實測**（2026-08-11，見下方「滑動抖動」）。使用者在 vMix
-   Browser Input 回報偶發抖動，已找出三個原因並修好；`prebuilt` 分支已重新建置。
-2. **Stage 5 Phase B：四項全數通過（2026-08-11，拓樸 A）。** 剩下的收尾：
-   - vMix prerequisite 改成查**設定裡那台主機**的 Web API（現在找本機 `vmix.exe`，
-     而 vMix 一律在別台，那一列永遠顯示「未偵測到」）。
-   - 決定 `PLAN.md` 列的「Browser Input 顯示/隱藏控制」要做還是砍掉
-     （建議砍：vMix 自己有 Overlay／Cut，而 `SetText` 讀不回狀態，做出來會是一顆
-     不知道自己是開還是關的按鈕）。
-   - 拓樸 B 的區網 overlay ＋ IP 名單（使用者已同意方向，形狀見下方）。
-   **關鍵：不要照 `.Text` 慣例猜欄位名稱**——建好 Title 後按控制頁「從 vMix 讀取 input」，
-   用 vMix 自己回報的名稱填入欄位清單。那份名單才是權威。
-3. **v0.1 驗收剩餘項目**：裝置錯誤測試（見下方 ⏳ 待辦；斷網已通過）。這是 v0.1 的
-   blocker，排在新功能之前。
-4. 使用者回報中英數混排斷行的實際效果後再調整 formatter（目前無已知問題）。
-5. **「啟用 vMix 輸出」勾選框**（2026-08-11 已修）待順手驗證：翻譯中取消勾選 → 確認 →
+> **Stage 5 已完成並通過實機驗收（2026-08-12）。** 收尾的三個決定都由使用者拍板，
+> 見下方「Stage 5 收尾決定」。目前**沒有進行中的工作**。
+
+1. **v0.1 驗收剩餘項目：裝置錯誤測試**（見下方 ⏳ 待辦；斷網已通過）。
+   **這是 v0.1 的 blocker，排在任何新功能之前。** 使用者要取得外接裝置測實體拔除；
+   看門狗修法已定但尚未實作，且「偵測到要停止 pipeline 還是只顯示錯誤」尚未決定。
+2. 使用者回報中英數混排斷行的實際效果後再調整 formatter（目前無已知問題）。
+3. **「啟用 vMix 輸出」勾選框**（2026-08-11 已修）待順手驗證：翻譯中取消勾選 → 確認 →
    GT Title 立刻清空且不再更新、overlay 繼續；再勾回來 → 字幕當場回到 Title 上。
+4. **Stage 6 onedir 已完成（2026-08-12），待使用者在目標機器實測**。要測的是：
+   複製 `dist/ExternalTranslate/` 到那台 → 執行 `ExternalTranslate.exe` → 控制台自動開啟
+   → **音訊來源列得出來**（這是打包最容易壞的地方）→ 設定改了會寫進
+   `%LOCALAPPDATA%\ExternalTranslate`。
+   **Inno Setup 安裝程式等使用者說 onedir OK 之後再考慮。**
+5. 其他候選：字幕語言（見 `PLAN.md`「候選功能：字幕語言」）、Stage 1.1 ASIO
+   （**只有實際硬體需要時才做，目前沒有需要**）。**皆未經指示，不得自行動工。**
+6. Playwright overlay 驗證**已完成**（2026-08-12），見下方。
+
+### 三項功能（2026-08-12，使用者提出，已實作＋實測）
+
+**1. 關閉程式按鈕**（上方欄位最右、紅色、按下跳確認視窗——使用者指定的形狀）。
+- `POST /api/shutdown`：**先 `await runtime.stop()` 再請求退出**。不停就退，vMix Title
+  會停著最後一句字幕，而唯一能清掉它的程序已經不在了。
+- **退出只是「請求」**：直接在 route 裡關掉 server，回應還沒送出就斷線，頁面會顯示請求失敗
+  而不是「已關閉」。改為設 `server.should_exit = True`，讓目前這筆回應先送完。
+- `serve.py` 因此改為自己建 `uvicorn.Server` 並把 `request_shutdown` 掛到 `app.state`；
+  沒有這個 hook 的執行方式回 503 並說「請直接關閉服務視窗」，不假裝成功。
+- 前端用原生 `<dialog showModal>`（焦點鎖定與 Esc 都是免費的）。**這裡用 modal 是對的**，
+  與 vMix 停用開關刻意不用 modal 不衝突：那邊按完還要繼續操作，這邊按完就沒有頁面了。
+  jsdom 沒有 `showModal`，在 `src/test/setup.ts` 補了 shim——**不因為 jsdom 缺功能就把產品做小**。
+
+**2. vMix input 選單顯示序號**（`1: 字幕標題`）。
+真正的理由不是對照方便，而是**名稱可以重複**——兩個都叫 `Title` 的 GT Title 在舊清單裡
+長得一模一樣。**序號只顯示、絕不儲存**：加減 input 時會位移，這正是存 GUID 的原因。
+
+**3. 「尚未檢查」的音訊項目**。
+先確認那不是 bug：探測其實成功了（真的列舉到裝置），但刻意標成「尚未檢查」而非「就緒」，
+因為**列舉到裝置 ≠ 開得起來收得到 PCM**。這是 Stage 0 立的規矩。
+- **真正的缺陷是文案**：它叫使用者去跑 `externaltranslate-audio-smoke`，
+  而那個命令**不在打包版裡**。已改成「開始翻譯後若順利收到音訊，這一項會自動轉為就緒」。
+- **改用真實使用來滿足這個檢查**：`PipelineRuntime.verified_audio_sources` 記錄
+  「這個來源這次執行真的產出過 PCM」（`CaptureStats.pcm_chunks > 0`），
+  `PrerequisiteChecker(verified_sources=...)` 據此轉為就緒。
+- **刻意不持久化**：設定檔是拿來複製到別台的，而這是關於**這台**硬體的事實。
+- 兩種來源分開記錄；證明了麥克風不代表系統輸出也行。
+- 這個訊號與延後的裝置看門狗是同一個，等於順手把管線鋪好。
+
+**順帶修掉的真實 bug：`index.html` 被瀏覽器快取。**
+測按鈕時發現頁面載入的是**舊的 bundle**。asset 檔名帶 content hash 可以永久快取，
+但 HTML 不行——升級後被快取的 HTML 會去要已經被刪掉的舊 asset，整頁載不起來。
+已對 `/` 與 `/overlay` 加上 `Cache-Control: no-store`（有測試）。
+
+實測（2026-08-12，真實服務＋瀏覽器）：按下關閉程式 → modal 開啟（`:modal` 為真）→
+確定關閉 → `POST /api/shutdown` 200 → uvicorn 乾淨關閉 → 程序 exit 0 → 連接埠釋放。
+
+### Stage 6：PyInstaller onedir（2026-08-12，已實作＋實機驗證）
+
+使用者決定**先做 onedir，OK 之後再考慮 Inno Setup**。
+
+`PYTHONPATH='' uv run python scripts/build_windows.py` → `dist/ExternalTranslate/`（約 72 MB）。
+複製整個資料夾到目標機器、執行 `ExternalTranslate.exe`，**那台不需要 Python／Node／uv**。
+
+- **刻意不做 pywebview**：原生視窗需要 WebView2 執行環境，而本專案不替使用者安裝執行環境
+  （與「不自動安裝 Node」同一條原則）。改為啟動後開預設瀏覽器。要原生視窗的話排到
+  安裝程式那一輪。
+- **保留主控台視窗**：它印出網址，啟動失敗時也看得到原因；windowed build 會無聲失敗。
+  關掉視窗就停止服務——與 `run.bat` 同一個心智模型。
+- **`backend/app/resources.py` 是唯一知道檔案在哪的地方。** 先前有五處各自算
+  `Path(__file__).parents[3]`，每一處在凍結後都會指向那台機器上不存在的原始碼樹。
+- **打包後寫入 `%LOCALAPPDATA%\ExternalTranslate`**，從原始碼執行則維持 `config/`
+  ——後者是刻意的，否則開發者的既有設定會在這次改動後無聲搬家。
+  寫入位置與程式目錄分離，換掉整個資料夾升級也不會弄丟設定（有測試斷言
+  可寫路徑不在 bundle 內）。
+- **單一實例**：啟動前先探連接埠，已被佔用就印 `already_running` 並 exit 1。
+
+**踩到的坑（會再踩，寫下來）：`importlib.import_module` 的模組 PyInstaller 看不到。**
+第一次 build 出來的程式可以開頁面、可以讀設定，**但音訊裝置列舉 500**：
+`ModuleNotFoundError: No module named 'pyaudiowpatch'`。`sounddevice`、`soxr`、
+`websockets` 同理，全部得寫進 spec 的 `hiddenimports`。
+**這種錯誤不會在啟動時出現，只會在操作者打開音訊面板那一刻出現**——所以打包後一定要
+實際打過 `/api/devices` 與 `/api/loopback-endpoints`，不能只看首頁有沒有開。
+
+實測（2026-08-12，`dist/ExternalTranslate/ExternalTranslate.exe`）：
+`/`、`/overlay`、`/api/settings`、`/api/devices`、`/api/loopback-endpoints`、
+`/api/prerequisites`、`/api/caption-presets` 全部 200；loopback 正確回報
+`Speakers (Realtek(R) Audio)`；WebSocket 同源連上；改字幕版面後
+`%LOCALAPPDATA%\ExternalTranslate\config\user.yaml` 出現 `chars_per_line: 14`、
+`idle_reset_ms: 2500`；重複啟動印出 `already_running` 並 exit 1。
+
+**尚未做**：Inno Setup 安裝程式（使用者說 onedir OK 之後再考慮）、
+全新 Windows VM 的安裝測試（Stage 6.1）。
+
+### Playwright overlay 驗證（2026-08-12，已實作＋已驗證抓得到 bug）
+
+`npm run test:e2e`（＝ `vite build && playwright test`）。7 個測試，Chromium。
+
+- **測的是正式建置的頁面**，由 `vite preview` 服務；**字幕 socket 在頁面裡被
+  `addInitScript` 換掉**，所以不需要後端、API Key 或麥克風，而且測試能決定每一筆字幕
+  何時抵達——「連續兩次滑動」這種時序才測得出來的東西，靠真後端反而做不到。
+- **範圍照使用者 2026-08-10 的決定：只做尺寸與行為斷言，不做像素快照比對。**
+- 涵蓋：框高 = 字級 × 1.3 × 行數、超出行數被裁掉且框不長高、只有最上面那行被擠掉才播
+  動畫、**前一次沒播完就再滑動要重播**、整段被換掉不播、body 背景全透明（vMix 去底）、
+  頁面不出現捲軸。
+- **已確認會抓到那個 bug**：把 `SLIDE_CLASS` 的交替拿掉（還原成修好之前的單一 class）
+  再跑，第四個測試失敗——第二次滑動的 `currentTime` 是 133 ms（動畫從沒重新開始），
+  而不是接近 0。其餘六個仍然通過，正好說明**只有那一個測試在守這件事**。
+- `vite preview` 必須加 `--host 127.0.0.1`：vite 預設綁 localhost（IPv6 `::1`），
+  而 Playwright 的就緒檢查打的是 `127.0.0.1`。
+- vitest 的 `exclude` 要排除 `e2e/**`，否則預設的 `**/*.spec.ts` 會把 Playwright
+  的測試撈進 jsdom 跑。
+- 執行產物（`test-results/`、`playwright-report/`）已加入 `.gitignore`。
+  第一次執行需 `npx playwright install chromium`（約 115 MB）。
+
+### Stage 5 收尾決定（2026-08-12 使用者拍板，不得自行推翻）
+
+1. **vMix prerequisite 維持現狀，不改。** 它只查本機 `vmix.exe`，而 vMix 在別台，
+   所以那一列永遠顯示「未偵測到」——**這是已知且接受的**。實際的連線檢查由控制頁的
+   「從 vMix 讀取 input」負責。那一列的 `action` 文字還寫著「Stage 5 前確認…」，
+   措辭已過期但使用者決定不動。**不要「順手修好」它。**
+2. **「Browser Input 顯示/隱藏控制」砍掉**，理由記在 `PLAN.md` Stage 5。
+3. **拓樸 B 的區網 overlay ＋ IP 名單：使用者傾向不做**（2026-08-12）。
+   因此 **Browser Input 只在「程式與 vMix 同一台」時可用**，程式在別台時用 GT Title
+   ——這是產品限制，不是待辦缺口。設計形狀仍保留在下方，日後要做再拿出來；
+   **未經指示不得動工。**
+4. **滑動抖動的第二輪修正實測通過**（2026-08-12）。
 
 ### vMix 在另一台（2026-08-11 使用者更正，蓋掉先前記錄）
 
@@ -54,10 +163,13 @@ IP」都是錯的，已作廢。
    這個使用者永遠是「未偵測到」，等於一列雜訊——真正該查的是設定裡那台主機的 Web API
    通不通。
 
-### 拓樸 B 的 Browser Input：使用者已同意方向（2026-08-11），尚未動工
+### 拓樸 B 的 Browser Input：**2026-08-12 使用者傾向不做**，以下僅供日後參考
 
-使用者要的是「**一份 IP 名單／可輸入欄位，只有名單上的 IP 抓得到 Browser Input**」。
-方向確定，以下是實作前必須先講明的形狀，**動工前需使用者確認**：
+先前（08-11）同意過方向，隔日改為傾向不做。**未經新的明確指示不得動工。**
+現況因此是：**拓樸 B 用 GT Title，沒有 Browser Input。**
+
+當初要的是「一份 IP 名單／可輸入欄位，只有名單上的 IP 抓得到 Browser Input」。
+真要復活這件事，以下是必須先講明的形狀：
 
 - **IP 名單不能取代綁定位址**。要讓別台連得進來，socket 就必須綁在區網位址上；名單是
   連線被接受**之後**才由應用層過濾。兩件事都要做，名單不是「不用開放」的替代品。
@@ -73,7 +185,8 @@ IP」都是錯的，已作廢。
 - **這道防線擋不了的**：同區網上偽裝成名單內 IP 的機器（ARP 層的事），以及區網上的被動
   竊聽——`/overlay` 是 HTTP，沒有加密。字幕內容在拓樸 B 下本來就以明文過區網。
 
-**前置條件：一鍵啟動——2026-08-11 已完成**（見下方）。
+**前置條件：一鍵啟動——2026-08-11 已完成**（見下方），與這件事是否要做無關，
+它本來就是拓樸 A 把程式裝到 vMix 那台所需要的。
 
 ### 一鍵啟動（2026-08-11，已實作＋實測）
 
@@ -286,7 +399,7 @@ Title 留著字且沒人能清），但**啟用開關不一樣**：直播中「�
   `backend/app/status/caption_status.py`）。
 - 控制頁另有翻譯計時器（開始翻譯歸零起算、停止時凍結）。
 
-### Stage 5 Phase A（2026-08-10，vMix 輸出，**待實機驗收**）
+### Stage 5 Phase A（2026-08-10，vMix 輸出，**已於 2026-08-12 通過實機驗收**）
 計劃檔：`.hermes/plans/2026-08-10_162520-stage-5-vmix.md`
 
 環境：實作期間以假 vMix 驗證。（本機 `C:\Program Files (x86)\vMix\vmix.exe` 那份**不能使用**；

@@ -110,3 +110,10 @@ def test_the_served_directory_is_reported(client: TestClient, built: Path) -> No
     # The launcher prints this so an operator can tell a stale build from a
     # missing one.
     assert client.app.state.frontend_dist == built  # type: ignore[attr-defined]
+
+
+def test_the_document_is_never_cached(client: TestClient) -> None:
+    # Asset names carry a content hash, so a cached index.html keeps asking
+    # for the previous build's files — which the upgrade deleted.
+    for path in ("/", "/overlay"):
+        assert client.get(path).headers["cache-control"] == "no-store"

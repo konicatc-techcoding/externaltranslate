@@ -55,3 +55,7 @@ Thumbs.db
 
 # Hermes local planning state
 .hermes/
+
+# Playwright run artefacts (screenshots, traces, reports)
+test-results/
+playwright-report/

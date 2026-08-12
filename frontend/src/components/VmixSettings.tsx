@@ -195,8 +195,12 @@ export function VmixSettings({
         >
           <option value="">—</option>
           {inputs.map((item) => (
+            // The number is shown because vMix shows it, and because two
+            // titles may carry the same name — without it they are the same
+            // row. It is never stored: numbers shift as inputs are added and
+            // removed, which is exactly why the GUID is what gets saved.
             <option key={item.guid} value={item.guid}>
-              {item.name}
+              {`${item.number}: ${item.name}`}
             </option>
           ))}
         </select>

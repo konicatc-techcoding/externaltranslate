@@ -9,6 +9,7 @@ from pathlib import Path
 from backend.app.config import load_settings
 from backend.app.prerequisites.checker import PrerequisiteChecker
 from backend.app.prerequisites.models import PrerequisiteResult
+from backend.app.resources import default_settings_path
 
 
 def render_report(results: Sequence[PrerequisiteResult]) -> str:
@@ -69,10 +70,9 @@ def _parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     args = _parser().parse_args()
-    project_root = Path(__file__).resolve().parents[3]
     print(
         render_configured_report(
-            default_path=project_root / "config" / "default.yaml",
+            default_path=default_settings_path(),
             user_path=args.user_config,
             runtime_source_kind=args.source_kind,
         )

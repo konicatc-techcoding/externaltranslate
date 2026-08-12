@@ -74,6 +74,18 @@ export const zhTW = {
     },
     stale: "連線中斷，以下為最後已知狀態",
   },
+  shutdown: {
+    button: "關閉程式",
+    title: "關閉 ExternalTranslate",
+    warning: "確定要關閉程式嗎？服務會停止，這個頁面與 Overlay 都會失去連線。",
+    warningRunning:
+      "翻譯正在進行中。關閉程式會停止翻譯並清空 vMix 的字幕欄位，"
+      + "這個頁面與 Overlay 也會失去連線。確定要關閉嗎？",
+    confirm: "確定關閉",
+    cancel: "取消",
+    done: "程式已關閉。可以直接關掉這個分頁。",
+    failed: "無法從網頁關閉程式；請直接關閉服務視窗。",
+  },
   captionLayout: {
     title: "字幕顯示範圍",
     note: "每行字數以全形字計算；翻譯進行中也可以調整，會立即重新排版。",
