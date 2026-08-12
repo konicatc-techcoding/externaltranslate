@@ -19,8 +19,34 @@
 2. 使用者回報中英數混排斷行的實際效果後再調整 formatter（目前無已知問題）。
 3. **「啟用 vMix 輸出」勾選框**（2026-08-11 已修）待順手驗證：翻譯中取消勾選 → 確認 →
    GT Title 立刻清空且不再更新、overlay 繼續；再勾回來 → 字幕當場回到 Title 上。
-4. 之後的候選：Playwright overlay 驗證（已排在 Stage 5 之後）、一鍵安裝（Stage 6）、
-   字幕語言（見 `PLAN.md`「候選功能：字幕語言」）。**皆未經指示，不得自行動工。**
+4. **打包（Stage 6）**：使用者 2026-08-12 詢問後尚未指示開始。**先決定要做到哪一層**——
+   PyInstaller onedir（複製資料夾即可執行，目標機器什麼都不用裝）就可能夠用，
+   Inno Setup 安裝程式只有要發給別人時才需要。PLAN 本來就寫「先 onedir smoke test，
+   再建 installer」。
+5. 其他候選：字幕語言（見 `PLAN.md`「候選功能：字幕語言」）、Stage 1.1 ASIO
+   （**只有實際硬體需要時才做，目前沒有需要**）。**皆未經指示，不得自行動工。**
+6. Playwright overlay 驗證**已完成**（2026-08-12），見下方。
+
+### Playwright overlay 驗證（2026-08-12，已實作＋已驗證抓得到 bug）
+
+`npm run test:e2e`（＝ `vite build && playwright test`）。7 個測試，Chromium。
+
+- **測的是正式建置的頁面**，由 `vite preview` 服務；**字幕 socket 在頁面裡被
+  `addInitScript` 換掉**，所以不需要後端、API Key 或麥克風，而且測試能決定每一筆字幕
+  何時抵達——「連續兩次滑動」這種時序才測得出來的東西，靠真後端反而做不到。
+- **範圍照使用者 2026-08-10 的決定：只做尺寸與行為斷言，不做像素快照比對。**
+- 涵蓋：框高 = 字級 × 1.3 × 行數、超出行數被裁掉且框不長高、只有最上面那行被擠掉才播
+  動畫、**前一次沒播完就再滑動要重播**、整段被換掉不播、body 背景全透明（vMix 去底）、
+  頁面不出現捲軸。
+- **已確認會抓到那個 bug**：把 `SLIDE_CLASS` 的交替拿掉（還原成修好之前的單一 class）
+  再跑，第四個測試失敗——第二次滑動的 `currentTime` 是 133 ms（動畫從沒重新開始），
+  而不是接近 0。其餘六個仍然通過，正好說明**只有那一個測試在守這件事**。
+- `vite preview` 必須加 `--host 127.0.0.1`：vite 預設綁 localhost（IPv6 `::1`），
+  而 Playwright 的就緒檢查打的是 `127.0.0.1`。
+- vitest 的 `exclude` 要排除 `e2e/**`，否則預設的 `**/*.spec.ts` 會把 Playwright
+  的測試撈進 jsdom 跑。
+- 執行產物（`test-results/`、`playwright-report/`）已加入 `.gitignore`。
+  第一次執行需 `npx playwright install chromium`（約 115 MB）。
 
 ### Stage 5 收尾決定（2026-08-12 使用者拍板，不得自行推翻）
 

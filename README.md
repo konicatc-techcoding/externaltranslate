@@ -113,6 +113,25 @@ npm --prefix frontend test -- --run
 npm --prefix frontend run build
 ```
 
+### Overlay 瀏覽器驗證（Playwright）
+
+```bash
+npm run test:e2e
+```
+
+它會先 `vite build`，用 `vite preview` 服務**正式建置的頁面**，再以 Chromium 跑
+`frontend/e2e/`。**字幕 socket 在頁面裡被換成假的**，所以不需要後端、API Key 或麥克風，
+而且測試能決定每一筆字幕什麼時候到——那正是「連續兩次滑動」這種時序才測得出來的東西。
+
+驗的是 **jsdom 驗不到的**：真實的版面尺寸，以及真實的動畫時間軸
+（`getAnimations()`）。**刻意不做像素快照比對**——換個字型就會壞，而且壞了也說不出原因。
+
+第一次執行需要下載 Chromium（約 115 MB）：
+
+```bash
+npx playwright install chromium
+```
+
 ### Prerequisite CLI smoke test
 
 ```bash
