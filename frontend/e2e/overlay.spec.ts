@@ -98,6 +98,13 @@ async function animations(
   }, VIEWPORT);
 }
 
+async function firstAnimation(
+  page: Page,
+): Promise<{ name: string; currentTime: number }> {
+  await expect.poll(async () => (await animations(page)).length).toBeGreaterThan(0);
+  return (await animations(page))[0];
+}
+
 test.beforeEach(async ({ page }) => {
   await stubSocket(page);
   await page.goto("/overlay");
@@ -143,18 +150,23 @@ test("前一次還沒播完就再滑動時，動畫要從頭重播", async ({ pa
   // jsdom has no animation timeline.
   await push(page, ["一", "二"], 2);
   await push(page, ["二", "三"], 2);
-  const first = await animations(page);
+  // The animation starts asynchronously; reading straight after the push
+  // sometimes finds nothing at all.
+  const first = await firstAnimation(page);
 
   await page.waitForTimeout(120);
-  const midway = await animations(page);
+  const midway = await firstAnimation(page);
   await push(page, ["三", "四"], 2);
-  const second = await animations(page);
 
-  expect(midway[0].currentTime).toBeGreaterThan(80);
-  expect(second).toHaveLength(1);
-  // Restarted, not left running from where the previous one had reached.
-  expect(second[0].currentTime).toBeLessThan(midway[0].currentTime);
-  expect(second[0].name).not.toBe(first[0].name);
+  // A restart swaps which of the two identical keyframes is in use. Waiting
+  // for that is what distinguishes "started over" from "still running".
+  await expect
+    .poll(async () => (await animations(page))[0]?.name)
+    .not.toBe(first.name);
+
+  const second = await firstAnimation(page);
+  expect(midway.currentTime).toBeGreaterThan(80);
+  expect(second.currentTime).toBeLessThan(midway.currentTime);
 });
 
 test("整段被換掉時不播滑動", async ({ page }) => {

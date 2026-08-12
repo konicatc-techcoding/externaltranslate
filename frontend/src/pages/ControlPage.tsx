@@ -12,6 +12,7 @@ import { ComponentStatusList } from "../components/ComponentStatusList";
 import { ShutdownButton } from "../components/ShutdownButton";
 import { PrerequisitePanel } from "../components/PrerequisitePanel";
 import { TranslationClock } from "../components/TranslationClock";
+import { ManualCaptions } from "../components/ManualCaptions";
 import { VmixSettings } from "../components/VmixSettings";
 import { zhTW } from "../i18n/zh-TW";
 import { captionStyleToOverlay } from "../overlay/style";
@@ -83,6 +84,11 @@ export function ControlPage() {
   // The service is going away; the socket will drop and the page will go
   // stale, so say why rather than letting it look like a fault.
   const [closed, setClosed] = useState(false);
+  // What the manual title is showing, so the panel can say so; the server
+  // does not track it because vMix, not us, is what holds that text.
+  const [manualOnAir, setManualOnAir] = useState<string[] | null>(null);
+  const [manualOverflowed, setManualOverflowed] = useState(false);
+  const [manualBusy, setManualBusy] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
   const [presets, setPresets] = useState<CaptionPreset[]>([]);
   const [vmixInputs, setVmixInputs] = useState<VmixInputItem[]>([]);
@@ -343,6 +349,48 @@ export function ControlPage() {
             }}
           />
         </CollapsiblePanel>
+      ) : null}
+
+      {settings !== null && settings.vmix.manual_input_guid !== null ? (
+        <ManualCaptions
+          slots={settings.vmix.manual_slots}
+          busy={manualBusy}
+          lastSent={manualOnAir}
+          overflowed={manualOverflowed}
+          onSlotsChange={(slots) => {
+            // Compared box by box rather than by joining: any separator
+            // can also appear inside a caption, and saving on every blur
+            // would write the same five strings back on every click.
+            const saved = settings.vmix.manual_slots;
+            if (slots.some((text, index) => text !== saved[index])) {
+              void changeVmix({ manual_slots: slots });
+            }
+          }}
+          onSend={(text) => {
+            setManualBusy(true);
+            void api
+              .sendManualCaption(text)
+              .then((result) => {
+                setManualOnAir(result.lines);
+                setManualOverflowed(result.overflowed);
+                setError(null);
+              })
+              .catch(report)
+              .finally(() => setManualBusy(false));
+          }}
+          onClear={() => {
+            setManualBusy(true);
+            void api
+              .clearManualCaption()
+              .then(() => {
+                setManualOnAir(null);
+                setManualOverflowed(false);
+                setError(null);
+              })
+              .catch(report)
+              .finally(() => setManualBusy(false));
+          }}
+        />
       ) : null}
       </section>
 

@@ -250,7 +250,18 @@ _VMIX_KEYS = {
     "fields",
     "min_interval_ms",
     "timeout_ms",
+    # Manually typed captions go to their own title, on the same vMix host,
+    # while the translation keeps writing to its own.
+    "manual_input_guid",
+    "manual_input_name",
+    "manual_fields",
+    "manual_slots",
 }
+
+# Five boxes on the panel: enough to prepare a show's standing messages, few
+# enough to pick from at a glance while something else is on air.
+MANUAL_SLOT_COUNT = 5
+MAX_MANUAL_SLOT_LENGTH = 200
 # A bare host or IPv4 address. Deliberately not a URL: accepting a scheme or a
 # path would hand the whole endpoint to the settings file.
 _HOSTNAME = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$")
@@ -262,6 +273,7 @@ VMIX_TIMEOUT_RANGE = (100, 10_000)
 VMIX_MAX_FIELDS = 10
 MAX_VMIX_FIELD_LENGTH = 120
 DEFAULT_VMIX_FIELDS = ("Line1.Text", "Line2.Text")
+DEFAULT_MANUAL_FIELDS = ("Manual1.Text",)
 
 
 class ConfigurationError(ValueError):
@@ -575,7 +587,7 @@ def validate_vmix_settings(settings: Settings) -> None:
     if not _is_bounded_int(vmix.get("port"), minimum=1, maximum=65535):
         raise ConfigurationError("vmix.port 必須是 1 到 65535 之間的整數。")
 
-    for name in ("input_guid", "input_name"):
+    for name in ("input_guid", "input_name", "manual_input_guid", "manual_input_name"):
         value = vmix.get(name)
         if value is not None and (
             not isinstance(value, str) or not value.strip() or len(value) > 200
@@ -583,6 +595,17 @@ def validate_vmix_settings(settings: Settings) -> None:
             raise ConfigurationError(f"vmix.{name} 必須是 null 或非空字串。")
 
     _validate_vmix_fields(vmix.get("fields"))
+    if vmix.get("manual_fields") is not None:
+        _validate_vmix_fields(vmix.get("manual_fields"), field="manual_fields")
+    _validate_manual_slots(vmix.get("manual_slots"))
+
+    manual_guid = vmix.get("manual_input_guid")
+    if manual_guid is not None and manual_guid == vmix.get("input_guid"):
+        # Both outputs would write the same fields and overwrite each other,
+        # which on screen looks like the caption flickering at random.
+        raise ConfigurationError(
+            "vmix.manual_input_guid 不可與翻譯字幕的 input 相同；請選另一個 Title。"
+        )
 
     if not _is_bounded_int(
         vmix.get("min_interval_ms"),
@@ -605,12 +628,12 @@ def validate_vmix_settings(settings: Settings) -> None:
         )
 
 
-def _validate_vmix_fields(fields: Any) -> None:
+def _validate_vmix_fields(fields: Any, *, field: str = "fields") -> None:
     if not isinstance(fields, list) or not fields:
-        raise ConfigurationError("vmix.fields 必須是至少一個欄位名稱的清單。")
+        raise ConfigurationError(f"vmix.{field} 必須是至少一個欄位名稱的清單。")
     if len(fields) > VMIX_MAX_FIELDS:
         raise ConfigurationError(
-            f"vmix.fields 最多 {VMIX_MAX_FIELDS} 個欄位。"
+            f"vmix.{field} 最多 {VMIX_MAX_FIELDS} 個欄位。"
         )
     for name in fields:
         if (
@@ -619,7 +642,22 @@ def _validate_vmix_fields(fields: Any) -> None:
             or len(name) > MAX_VMIX_FIELD_LENGTH
         ):
             raise ConfigurationError(
-                f"vmix.fields 的每個項目必須是 1 到 {MAX_VMIX_FIELD_LENGTH} 字元的非空字串。"
+                f"vmix.{field} 的每個項目必須是 1 到 {MAX_VMIX_FIELD_LENGTH} 字元的非空字串。"
+            )
+
+
+def _validate_manual_slots(slots: Any) -> None:
+    """The saved boxes: a fixed number of them, plain text, bounded length."""
+    if slots is None:
+        return
+    if not isinstance(slots, list) or len(slots) != MANUAL_SLOT_COUNT:
+        raise ConfigurationError(
+            f"vmix.manual_slots 必須是剛好 {MANUAL_SLOT_COUNT} 個字串的清單。"
+        )
+    for text in slots:
+        if not isinstance(text, str) or len(text) > MAX_MANUAL_SLOT_LENGTH:
+            raise ConfigurationError(
+                f"vmix.manual_slots 的每一格必須是 {MAX_MANUAL_SLOT_LENGTH} 字元以內的字串。"
             )
 
 
@@ -672,6 +710,12 @@ def vmix_settings(settings: Mapping[str, Any]) -> dict[str, Any]:
         "fields": list(vmix.get("fields", DEFAULT_VMIX_FIELDS)),
         "min_interval_ms": int(vmix.get("min_interval_ms", 200)),
         "timeout_ms": int(vmix.get("timeout_ms", 1000)),
+        "manual_input_guid": vmix.get("manual_input_guid"),
+        "manual_input_name": vmix.get("manual_input_name"),
+        "manual_fields": list(vmix.get("manual_fields") or DEFAULT_MANUAL_FIELDS),
+        "manual_slots": list(
+            vmix.get("manual_slots") or [""] * MANUAL_SLOT_COUNT
+        ),
     }
 
 

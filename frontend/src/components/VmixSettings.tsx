@@ -211,6 +211,38 @@ export function VmixSettings({
       ) : null}
 
       <div className="field-row">
+        <label htmlFor="vmix-manual-input">{zhTW.vmix.manualInput}</label>
+        <select
+          id="vmix-manual-input"
+          value={settings.manual_input_guid ?? ""}
+          onChange={(event) => {
+            const chosen = inputs.find((item) => item.guid === event.target.value);
+            onChange({
+              manual_input_guid: chosen?.guid ?? null,
+              manual_input_name: chosen?.name ?? null,
+              // The title's own boxes are the authority on what to write to,
+              // the same as for the translation title.
+              ...(chosen !== undefined && chosen.text_fields.length > 0
+                ? { manual_fields: chosen.text_fields }
+                : {}),
+            });
+          }}
+        >
+          <option value="">—</option>
+          {inputs
+            // Offering the translation's own title would only produce a
+            // rejected save; leaving it out says why by omission.
+            .filter((item) => item.guid !== settings.input_guid)
+            .map((item) => (
+              <option key={item.guid} value={item.guid}>
+                {`${item.number}: ${item.name}`}
+              </option>
+            ))}
+        </select>
+      </div>
+      <p className="panel__note">{zhTW.vmix.manualHint}</p>
+
+      <div className="field-row">
         <label htmlFor="vmix-fields">{zhTW.vmix.fields}</label>
         <textarea
           id="vmix-fields"

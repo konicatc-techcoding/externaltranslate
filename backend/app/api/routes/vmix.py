@@ -6,6 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from backend.app.api.dependencies import get_runtime
 from backend.app.api.models import (
+    ManualCaptionRequest,
+    ManualCaptionResponse,
     VmixInputItem,
     VmixInputList,
     VmixTestRequest,
@@ -102,3 +104,48 @@ async def clear_fields(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
         ) from None
     return VmixTestResponse(message="已清空 vMix 字幕欄位。", lines=[])
+
+
+@router.post("/manual", response_model=ManualCaptionResponse)
+async def send_manual_caption(
+    payload: ManualCaptionRequest,
+    runtime: Annotated[PipelineRuntime, Depends(get_runtime)],
+) -> ManualCaptionResponse:
+    """Put typed text on the manual title, replacing whatever is there.
+
+    Allowed while translating, unlike the test caption: this writes to a
+    different input, so there is nothing for the running translation to
+    overwrite and nothing here that would disturb it.
+    """
+    try:
+        lines = await runtime.send_manual_caption(payload.text)
+    except RuntimeSelectionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
+        ) from None
+    except VmixError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from None
+    return ManualCaptionResponse(
+        message="已送出手動字幕。",
+        lines=lines,
+        overflowed=runtime.manual_overflowed,
+    )
+
+
+@router.post("/manual/clear", response_model=ManualCaptionResponse)
+async def clear_manual_caption(
+    runtime: Annotated[PipelineRuntime, Depends(get_runtime)],
+) -> ManualCaptionResponse:
+    try:
+        await runtime.clear_manual_caption()
+    except RuntimeSelectionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
+        ) from None
+    except VmixError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from None
+    return ManualCaptionResponse(message="已清空手動字幕。", lines=[], overflowed=False)

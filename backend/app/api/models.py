@@ -91,6 +91,12 @@ class VmixSettings(StrictModel):
     fields: list[str]
     min_interval_ms: int
     timeout_ms: int
+    #: The separate title manually typed captions go to, on the same host.
+    manual_input_guid: str | None
+    manual_input_name: str | None
+    manual_fields: list[str]
+    #: The prepared boxes on the panel, saved so a show can be set up ahead.
+    manual_slots: list[str]
 
 
 class VmixSettingsUpdate(StrictModel):
@@ -104,6 +110,10 @@ class VmixSettingsUpdate(StrictModel):
     fields: list[str] | None = None
     min_interval_ms: int | None = None
     timeout_ms: int | None = None
+    manual_input_guid: str | None = None
+    manual_input_name: str | None = None
+    manual_fields: list[str] | None = None
+    manual_slots: list[str] | None = None
 
 
 class VmixInputItem(StrictModel):
@@ -123,6 +133,20 @@ class VmixTestRequest(StrictModel):
     """Lines to write. Omitted means "one marker per configured field"."""
 
     lines: list[str] | None = Field(default=None, max_length=10)
+
+
+class ManualCaptionRequest(StrictModel):
+    """Whatever the operator has in the selected box, sent as typed."""
+
+    text: str = Field(default="", max_length=200)
+
+
+class ManualCaptionResponse(StrictModel):
+    message: str
+    #: Exactly what was written, wrapped for the manual title.
+    lines: list[str]
+    #: True when the text needed more lines than the title has fields.
+    overflowed: bool
 
 
 class VmixTestResponse(StrictModel):

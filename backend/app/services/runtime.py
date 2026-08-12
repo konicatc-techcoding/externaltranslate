@@ -24,6 +24,7 @@ from backend.app.audio.sources.wasapi_loopback import (
     LoopbackDeviceError,
 )
 from backend.app.captions.assembler import CaptionAssembler, CaptionEventSink
+from backend.app.captions.formatter import wrap_caption
 from backend.app.captions.models import CaptionState
 from backend.app.captions.presets import CaptionPreset, PresetStore
 from backend.app.captions.store import CaptionStore
@@ -65,6 +66,10 @@ from backend.app.translation.gemini_live import GeminiLiveProvider
 from backend.app.translation.models import TranslationEvent
 
 _SOURCE_KINDS = ("input_device", "wasapi_loopback")
+
+# Wrap generously, then keep as many lines as the title has fields; the
+# remainder is what the panel warns about.
+_MANUAL_WRAP_LIMIT = 64
 
 CredentialTestOutcome = Literal["ok", "auth_failed", "network_error", "not_configured"]
 
@@ -189,6 +194,11 @@ class PipelineRuntime:
         self._vmix_notice: str | None = None
         self._vmix_client_factory = vmix_client_factory
         self._vmix_output: CaptionOutput = NullOutput()
+        # Manual captions have their own output and their own lifetime:
+        # they must work with no translation running at all.
+        self._manual_output: VmixOutput | None = None
+        self._manual_target: tuple[Any, ...] | None = None
+        self._manual_overflowed = False
         # Source kinds proven to actually capture, this process only.
         self._verified_sources: set[str] = set()
         self._preset_store = preset_store or PresetStore(preset_store_path())
@@ -638,7 +648,9 @@ class PipelineRuntime:
     def update_vmix_settings(self, updates: Mapping[str, Any]) -> None:
         """Change the vMix target. Takes effect on the next start."""
         allowed = {"host", "port", "input_guid", "input_name", "fields",
-                   "min_interval_ms", "timeout_ms"}
+                   "min_interval_ms", "timeout_ms",
+                   "manual_input_guid", "manual_input_name", "manual_fields",
+                   "manual_slots"}
         unknown = set(updates) - allowed
         if unknown:
             raise RuntimeSelectionError(f"不支援的 vMix 設定欄位：{min(unknown)}。")
@@ -707,6 +719,13 @@ class PipelineRuntime:
                     "fields",
                     "min_interval_ms",
                     "timeout_ms",
+                    "manual_input_guid",
+                    "manual_input_name",
+                    "manual_fields",
+                    # The prepared messages are the point of the panel; losing
+                    # them on restart would mean typing them again before
+                    # every show.
+                    "manual_slots",
                 )
             },
             "features": {"vmix_output": vmix["enabled"]},
@@ -752,6 +771,101 @@ class PipelineRuntime:
             self._status_publisher.publish(
                 Component.VMIX_OUTPUT, _VMIX_COMPONENT_STATES[state]
             )
+
+    # ---------------------------------------------------------- manual captions
+
+    @property
+    def manual_overflowed(self) -> bool:
+        """Whether the last manual caption was longer than its title holds."""
+        return self._manual_overflowed
+
+    def manual_caption_lines(self, text: str) -> tuple[list[str], bool]:
+        """Wrap typed text for the manual title, and say if it did not fit.
+
+        The beginning is kept, not the end. A translation window slides so the
+        newest words are the ones on screen; a typed message is fixed text, and
+        dropping its front would hide the part that matters.
+
+        Sentence breaking is off here for the same reason: it exists to stop a
+        streamed sentence starting at the edge of a line, and on a prepared
+        message it only wastes the box.
+        """
+        fields = list(vmix_settings(self._settings)["manual_fields"])
+        chars_per_line, _max_lines = caption_layout(self._settings)
+        wrapped = wrap_caption(
+            text,
+            chars_per_line=chars_per_line,
+            max_lines=_MANUAL_WRAP_LIMIT,
+            sentence_breaks=False,
+        )
+        visible = list(wrapped[: len(fields)])
+        return visible, len(wrapped) > len(fields)
+
+    async def _open_manual_output(self) -> VmixOutput:
+        vmix = vmix_settings(self._settings)
+        guid = vmix["manual_input_guid"]
+        if not guid:
+            raise RuntimeSelectionError(
+                "尚未選擇手動字幕要輸出的 vMix input；請先在面板選一個 Title。"
+            )
+        target = (
+            vmix["host"],
+            vmix["port"],
+            guid,
+            tuple(vmix["manual_fields"]),
+            vmix["timeout_ms"],
+        )
+        if self._manual_output is not None and self._manual_target == target:
+            return self._manual_output
+
+        await self.close_manual_output()
+        output = VmixOutput(
+            self.vmix_client(),
+            input_guid=str(guid),
+            fields=list(vmix["manual_fields"]),
+            min_interval_ms=int(vmix["min_interval_ms"]),
+        )
+        if not await output.start():
+            if output.last_failure is not None:
+                raise output.last_failure
+            raise RuntimeSelectionError(
+                output.last_error or "無法連上手動字幕的 vMix input。"
+            )
+        self._manual_output = output
+        self._manual_target = target
+        return output
+
+    async def send_manual_caption(self, text: str) -> list[str]:
+        """Put typed text on the manual title, replacing whatever is there.
+
+        Allowed while translating: that is the point — the translation keeps
+        writing to its own title while this one carries a standing message.
+        """
+        lines, overflowed = self.manual_caption_lines(text)
+        output = await self._open_manual_output()
+        output.publish(lines)
+        await output.flush()
+        self._manual_overflowed = overflowed
+        return lines
+
+    async def clear_manual_caption(self) -> None:
+        output = await self._open_manual_output()
+        await output.clear()
+        self._manual_overflowed = False
+
+    async def close_manual_output(self) -> None:
+        """Release the manual output, leaving whatever is on air alone.
+
+        Deliberately does not blank the title. The translation output clears on
+        stop because a frozen live caption misleads; a manual message was put
+        there on purpose, and removing it is the operator's call.
+        """
+        output = self._manual_output
+        self._manual_output = None
+        self._manual_target = None
+        if output is not None:
+            with suppress(Exception):
+                await output.aclose()
 
     async def _close_vmix_output(self) -> None:
         output = self._vmix_output
