@@ -237,6 +237,7 @@ UI_PANEL_IDS: tuple[str, ...] = (
     "audio",
     "caption",
     "vmix",
+    "manual",
 )
 
 _VMIX_KEYS = {

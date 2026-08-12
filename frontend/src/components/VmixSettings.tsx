@@ -103,8 +103,7 @@ export function VmixSettings({
   const mismatch = settings.fields.length < maxLines;
 
   return (
-    <section className="panel" aria-labelledby="vmix-title">
-      <h2 id="vmix-title">{zhTW.vmix.title}</h2>
+    <div className="stacked-settings">
       <p className="panel__note">{zhTW.vmix.note}</p>
 
       {notice !== null ? (
@@ -272,6 +271,6 @@ export function VmixSettings({
           {copied ? zhTW.vmix.copied : zhTW.vmix.copy}
         </button>
       </div>
-    </section>
+    </div>
   );
 }

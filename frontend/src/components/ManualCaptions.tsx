@@ -73,8 +73,7 @@ export function ManualCaptions({
   const chosen = drafts[selected] ?? "";
 
   return (
-    <section className="panel" aria-labelledby="manual-title">
-      <h2 id="manual-title">{zhTW.manual.title}</h2>
+    <div className="stacked-settings">
       <p className="panel__note">{zhTW.manual.note}</p>
 
       {notice !== null ? (
@@ -199,6 +198,6 @@ export function ManualCaptions({
           {zhTW.manual.overflow}
         </p>
       ) : null}
-    </section>
+    </div>
   );
 }
