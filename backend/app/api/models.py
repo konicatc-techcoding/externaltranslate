@@ -97,6 +97,8 @@ class VmixSettings(StrictModel):
     manual_fields: list[str]
     #: The prepared boxes on the panel, saved so a show can be set up ahead.
     manual_slots: list[str]
+    #: The manual title's own line width, independent of the translation's.
+    manual_chars_per_line: int
 
 
 class VmixSettingsUpdate(StrictModel):
@@ -114,6 +116,7 @@ class VmixSettingsUpdate(StrictModel):
     manual_input_name: str | None = None
     manual_fields: list[str] | None = None
     manual_slots: list[str] | None = None
+    manual_chars_per_line: int | None = None
 
 
 class VmixInputItem(StrictModel):

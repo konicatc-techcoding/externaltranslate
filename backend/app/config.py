@@ -256,6 +256,10 @@ _VMIX_KEYS = {
     "manual_input_name",
     "manual_fields",
     "manual_slots",
+    # Its own line width: the manual title is a different GT Title, with
+    # its own box and font size, so nothing about it follows from how the
+    # translation is wrapped.
+    "manual_chars_per_line",
 }
 
 # Five boxes on the panel: enough to prepare a show's standing messages, few
@@ -599,6 +603,16 @@ def validate_vmix_settings(settings: Settings) -> None:
         _validate_vmix_fields(vmix.get("manual_fields"), field="manual_fields")
     _validate_manual_slots(vmix.get("manual_slots"))
 
+    if "manual_chars_per_line" in vmix and not _is_bounded_int(
+        vmix["manual_chars_per_line"],
+        minimum=CHARS_PER_LINE_RANGE[0],
+        maximum=CHARS_PER_LINE_RANGE[1],
+    ):
+        raise ConfigurationError(
+            f"vmix.manual_chars_per_line 必須是 {CHARS_PER_LINE_RANGE[0]} 到 "
+            f"{CHARS_PER_LINE_RANGE[1]} 之間的整數。"
+        )
+
     manual_guid = vmix.get("manual_input_guid")
     if manual_guid is not None and manual_guid == vmix.get("input_guid"):
         # Both outputs would write the same fields and overwrite each other,
@@ -715,6 +729,9 @@ def vmix_settings(settings: Mapping[str, Any]) -> dict[str, Any]:
         "manual_fields": list(vmix.get("manual_fields") or DEFAULT_MANUAL_FIELDS),
         "manual_slots": list(
             vmix.get("manual_slots") or [""] * MANUAL_SLOT_COUNT
+        ),
+        "manual_chars_per_line": int(
+            vmix.get("manual_chars_per_line", DEFAULT_CHARS_PER_LINE)
         ),
     }
 

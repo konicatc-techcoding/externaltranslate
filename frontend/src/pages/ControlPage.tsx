@@ -354,6 +354,10 @@ export function ControlPage() {
       {settings !== null && settings.vmix.manual_input_guid !== null ? (
         <ManualCaptions
           slots={settings.vmix.manual_slots}
+          charsPerLine={settings.vmix.manual_chars_per_line}
+          onCharsPerLineChange={(charsPerLine) => {
+            void changeVmix({ manual_chars_per_line: charsPerLine });
+          }}
           busy={manualBusy}
           lastSent={manualOnAir}
           overflowed={manualOverflowed}
