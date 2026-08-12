@@ -506,3 +506,63 @@ select {
   margin: 0 0 1rem;
   line-height: 1.6;
 }
+
+/* Five prepared messages and one button. Laid out as a numbered list because
+   the operator picks by position under time pressure, not by reading. */
+.manual-slots {
+  margin: 0.5rem 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.manual-slots__row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.manual-slots__row input[type="text"] {
+  flex: 1;
+}
+
+.manual-slots__pick {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: #9db2cd;
+  font-variant-numeric: tabular-nums;
+}
+
+.button-onair {
+  border: 1px solid #2f7d4f;
+  background: #1f6b41;
+  color: #f2fbf5;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.button-onair:hover:not(:disabled) {
+  background: #257a4b;
+}
+
+.manual-onair {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  background: #14202d;
+}
+
+.manual-onair__tag {
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  background: #b3261e;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}

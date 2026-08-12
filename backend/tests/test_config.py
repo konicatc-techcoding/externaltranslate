@@ -536,3 +536,76 @@ def test_caption_idle_reset_defaults_to_off() -> None:
     from backend.app.config import caption_idle_reset_ms
 
     assert caption_idle_reset_ms({}) == 0
+
+
+def _vmix_yaml(extra: str = "") -> str:
+    return (
+        "vmix:\n"
+        "  host: 127.0.0.1\n"
+        "  port: 8088\n"
+        "  input_guid: 877bb3e7-58bd-46a1-85ce-0d673aec6bf5\n"
+        "  input_name: 翻譯字幕\n"
+        "  fields: [Line1.Text, Line2.Text]\n"
+        "  min_interval_ms: 200\n"
+        "  timeout_ms: 1000\n" + extra
+    )
+
+
+def test_manual_captions_default_to_five_empty_slots(tmp_path: Path) -> None:
+    from backend.app.config import MANUAL_SLOT_COUNT, vmix_settings
+
+    default_path = tmp_path / "default.yaml"
+    default_path.write_text(_vmix_yaml(), encoding="utf-8")
+
+    vmix = vmix_settings(load_settings(default_path))
+
+    assert vmix["manual_input_guid"] is None
+    assert vmix["manual_slots"] == [""] * MANUAL_SLOT_COUNT
+
+
+def test_manual_captions_round_trip(tmp_path: Path) -> None:
+    from backend.app.config import vmix_settings
+
+    default_path = tmp_path / "default.yaml"
+    default_path.write_text(
+        _vmix_yaml(
+            "  manual_input_guid: 11111111-2222-3333-4444-555555555555\n"
+            "  manual_input_name: 手動字幕\n"
+            "  manual_fields: [Manual.Text]\n"
+            '  manual_slots: ["稍後回來", "", "", "", ""]\n'
+        ),
+        encoding="utf-8",
+    )
+
+    vmix = vmix_settings(load_settings(default_path))
+
+    assert vmix["manual_input_name"] == "手動字幕"
+    assert vmix["manual_fields"] == ["Manual.Text"]
+    assert vmix["manual_slots"][0] == "稍後回來"
+
+
+def test_the_manual_title_may_not_be_the_translation_title(tmp_path: Path) -> None:
+    # Both outputs would write to the same fields and overwrite each other,
+    # which on screen looks like the caption flickering at random.
+    default_path = tmp_path / "default.yaml"
+    default_path.write_text(
+        _vmix_yaml("  manual_input_guid: 877bb3e7-58bd-46a1-85ce-0d673aec6bf5\n"),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigurationError, match="不可與翻譯字幕"):
+        load_settings(default_path)
+
+
+@pytest.mark.parametrize(
+    "slots",
+    ['["a", "b", "c", "d"]', '["a", "b", "c", "d", "e", "f"]', '[1, 2, 3, 4, 5]'],
+)
+def test_manual_slots_are_a_closed_shape(tmp_path: Path, slots: str) -> None:
+    default_path = tmp_path / "default.yaml"
+    default_path.write_text(
+        _vmix_yaml(f"  manual_slots: {slots}\n"), encoding="utf-8"
+    )
+
+    with pytest.raises(ConfigurationError, match="manual_slots"):
+        load_settings(default_path)

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -268,8 +268,11 @@ describe("input 清單", () => {
       />,
     );
 
-    expect(screen.getByRole("option", { name: "1: 字幕標題" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "4: 字幕標題" })).toBeInTheDocument();
+    // Scoped to the translation selector: the manual one lists the same
+    // inputs, so an unscoped query would match both.
+    const translation = within(screen.getByLabelText("輸出到哪個 input"));
+    expect(translation.getByRole("option", { name: "1: 字幕標題" })).toBeInTheDocument();
+    expect(translation.getByRole("option", { name: "4: 字幕標題" })).toBeInTheDocument();
 
     // The number is for reading only: it shifts when inputs are added or
     // removed, which is why the GUID is what gets stored.

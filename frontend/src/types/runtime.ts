@@ -107,6 +107,12 @@ export interface VmixSettings {
   fields: string[];
   min_interval_ms: number;
   timeout_ms: number;
+  /** The separate title manually typed captions go to, on the same host. */
+  manual_input_guid: string | null;
+  manual_input_name: string | null;
+  manual_fields: string[];
+  /** The five prepared boxes, saved so a show can be set up ahead of time. */
+  manual_slots: string[];
 }
 
 export const DEFAULT_VMIX_SETTINGS: VmixSettings = {
@@ -118,6 +124,10 @@ export const DEFAULT_VMIX_SETTINGS: VmixSettings = {
   fields: ["Line1.Text", "Line2.Text"],
   min_interval_ms: 200,
   timeout_ms: 1000,
+  manual_input_guid: null,
+  manual_input_name: null,
+  manual_fields: ["Manual1.Text"],
+  manual_slots: ["", "", "", "", ""],
 };
 
 export interface VmixInputItem {

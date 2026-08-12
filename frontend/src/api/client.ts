@@ -145,6 +145,18 @@ export const api = {
   shutdown: () =>
     request<{ message: string }>("/api/shutdown", { method: "POST" }),
 
+  sendManualCaption: (text: string) =>
+    request<{ message: string; lines: string[]; overflowed: boolean }>(
+      "/api/vmix/manual",
+      { method: "POST", body: JSON.stringify({ text }) },
+    ),
+
+  clearManualCaption: () =>
+    request<{ message: string; lines: string[]; overflowed: boolean }>(
+      "/api/vmix/manual/clear",
+      { method: "POST" },
+    ),
+
   clearCaptions: () =>
     request<{ message: string }>("/api/captions/clear", { method: "POST" }),
 
