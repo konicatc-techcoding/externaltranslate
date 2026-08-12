@@ -159,10 +159,6 @@ export const zhTW = {
     testBusy: "翻譯執行中無法測試",
     remoteWarning:
       "vMix Web API 只有 HTTP、沒有加密。指定非本機位址時，翻譯後的字幕會以明文經過區域網路。",
-    manualInput: "手動字幕輸出到哪個 input",
-    manualHint:
-      "手動字幕會送到這個 Title，與翻譯字幕互不影響；必須選另一個 Title，不能和翻譯共用。" +
-      "選好之後，左側會出現手動字幕面板。",
     overlayUrl: "Browser Input 網址",
     copy: "複製",
     copied: "已複製",
@@ -172,6 +168,10 @@ export const zhTW = {
     note:
       "送到 vMix 的另一個 Title，與即時翻譯同時進行、互不影響。" +
       "送出後會一直停留在畫面上，直到再送一次或按清空。",
+    target: "輸出到哪個 input",
+    refreshInputs: "從 vMix 讀取 input",
+    noInputs: "尚未讀取到 input；請確認 vMix 已啟動、上方 vMix 輸出的主機設定正確，再按讀取。",
+    noTarget: "請選一個 Title；必須與即時翻譯用的不同，所以清單裡不會出現那一個。",
     slotLabel: "字幕",
     charsPerLine: "每行字數",
     charsPerLineHint:
@@ -181,7 +181,6 @@ export const zhTW = {
     clear: "清空",
     onAir: "ON AIR",
     overflow: "這段文字超過手動 Title 的欄位數，只送出前面幾行；請縮短或增加欄位。",
-    noTarget: "尚未選擇手動字幕的 Title；請在 vMix 輸出面板選一個。",
   },
   presets: {
     title: "字幕格式預設",

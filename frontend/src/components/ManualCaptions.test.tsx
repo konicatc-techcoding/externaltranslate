@@ -6,8 +6,21 @@ import { ManualCaptions } from "./ManualCaptions";
 
 const SLOTS = ["請稍候", "節目稍後開始", "", "", ""];
 
+const TITLE = {
+  guid: "manual-guid",
+  number: 2,
+  name: "手動字幕",
+  kind: "GT",
+  text_fields: ["Manual1.Text", "Manual2.Text"],
+};
+
 function renderPanel(overrides: Partial<Parameters<typeof ManualCaptions>[0]> = {}) {
   const props = {
+    inputs: [TITLE],
+    target: TITLE.guid,
+    translationTarget: "translation-guid",
+    onTargetChange: vi.fn(),
+    onRefreshInputs: vi.fn(),
     slots: SLOTS,
     charsPerLine: 20,
     onSlotsChange: vi.fn(),
@@ -116,5 +129,43 @@ describe("每行字數", () => {
     await user.type(width, "99");
 
     expect(props.onCharsPerLineChange).not.toHaveBeenCalledWith(99);
+  });
+});
+
+describe("輸出目標", () => {
+  it("在這張卡裡就能選 Title，不必跑去 vMix 面板", async () => {
+    const user = userEvent.setup();
+    const props = renderPanel({ target: null });
+
+    await user.selectOptions(
+      screen.getByLabelText("輸出到哪個 input"),
+      TITLE.guid,
+    );
+
+    expect(props.onTargetChange).toHaveBeenCalledWith(TITLE);
+  });
+
+  it("清單裡不會出現翻譯用的那個 Title", () => {
+    const translation = { ...TITLE, guid: "translation-guid", name: "翻譯字幕" };
+    renderPanel({ inputs: [TITLE, translation], target: null });
+
+    const select = screen.getByLabelText("輸出到哪個 input");
+    expect(select).not.toHaveTextContent("翻譯字幕");
+  });
+
+  it("還沒選 Title 時面板照樣顯示，只是送不出去", () => {
+    // Hiding the panel would leave an operator looking for a feature that is
+    // there, with nothing saying what is missing.
+    renderPanel({ target: null });
+
+    expect(screen.getByText("手動字幕")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "發送 ON AIR" })).toBeDisabled();
+    expect(screen.getByText(/請選一個 Title/)).toBeInTheDocument();
+  });
+
+  it("讀不到 input 時說出該去確認什麼", () => {
+    renderPanel({ inputs: [], target: null });
+
+    expect(screen.getByText(/確認 vMix 已啟動/)).toBeInTheDocument();
   });
 });

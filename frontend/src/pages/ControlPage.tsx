@@ -351,8 +351,31 @@ export function ControlPage() {
         </CollapsiblePanel>
       ) : null}
 
-      {settings !== null && settings.vmix.manual_input_guid !== null ? (
+      {settings !== null ? (
         <ManualCaptions
+          inputs={vmixInputs}
+          target={settings.vmix.manual_input_guid}
+          translationTarget={settings.vmix.input_guid}
+          onTargetChange={(chosen) => {
+            void changeVmix({
+              manual_input_guid: chosen?.guid ?? null,
+              manual_input_name: chosen?.name ?? null,
+              // The title's own boxes are the authority on what to write to,
+              // the same as for the translation title.
+              ...(chosen !== null && chosen.text_fields.length > 0
+                ? { manual_fields: chosen.text_fields }
+                : {}),
+            });
+          }}
+          onRefreshInputs={() => {
+            void api
+              .vmixInputs()
+              .then((result) => {
+                setVmixInputs(result.inputs);
+                setError(null);
+              })
+              .catch(report);
+          }}
           slots={settings.vmix.manual_slots}
           charsPerLine={settings.vmix.manual_chars_per_line}
           onCharsPerLineChange={(charsPerLine) => {
