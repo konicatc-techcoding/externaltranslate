@@ -64,6 +64,13 @@
 
 實測（2026-08-12，真實服務＋瀏覽器）：按下關閉程式 → modal 開啟（`:modal` 為真）→
 確定關閉 → `POST /api/shutdown` 200 → uvicorn 乾淨關閉 → 程序 exit 0 → 連接埠釋放。
+**使用者於打包版（`dist/ExternalTranslate/ExternalTranslate.exe`）再次驗證通過**，
+log 為 `POST /api/shutdown 200` → `Application shutdown complete` → `Finished server process`。
+
+**環境檢查轉綠已由使用者實測通過（2026-08-12，打包版）**：開始翻譯後，
+「音訊輸入裝置與 PortAudio」與「Windows 系統輸出 WASAPI loopback」皆轉為就緒。
+**注意這是每個程序各自累積的**：重新啟動後在跑第一次翻譯之前會再次顯示「尚未檢查」，
+這是刻意的——新的程序確實還沒證明過任何事。
 
 ### Stage 6：PyInstaller onedir（2026-08-12，已實作＋實機驗證）
 
