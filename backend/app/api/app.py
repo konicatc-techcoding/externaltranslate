@@ -30,6 +30,7 @@ from backend.app.audio.models import AudioDeviceInfo, LoopbackEndpointInfo
 from backend.app.config import ConfigurationError, load_settings
 from backend.app.prerequisites.checker import PrerequisiteChecker
 from backend.app.prerequisites.models import PrerequisiteResult
+from backend.app.resources import default_settings_path
 from backend.app.services.runtime import PipelineRuntime
 
 _LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
@@ -53,8 +54,7 @@ def resolve_bind_host(host: str | None, *, lan_access: bool = False) -> str:
 
 
 def _default_settings() -> dict[str, object]:
-    project_root = Path(__file__).resolve().parents[3]
-    return load_settings(project_root / "config" / "default.yaml", None, None)
+    return load_settings(default_settings_path(), None, None)
 
 
 def _default_prerequisites() -> list[PrerequisiteResult]:

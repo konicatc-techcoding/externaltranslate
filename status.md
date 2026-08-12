@@ -19,13 +19,51 @@
 2. 使用者回報中英數混排斷行的實際效果後再調整 formatter（目前無已知問題）。
 3. **「啟用 vMix 輸出」勾選框**（2026-08-11 已修）待順手驗證：翻譯中取消勾選 → 確認 →
    GT Title 立刻清空且不再更新、overlay 繼續；再勾回來 → 字幕當場回到 Title 上。
-4. **打包（Stage 6）**：使用者 2026-08-12 詢問後尚未指示開始。**先決定要做到哪一層**——
-   PyInstaller onedir（複製資料夾即可執行，目標機器什麼都不用裝）就可能夠用，
-   Inno Setup 安裝程式只有要發給別人時才需要。PLAN 本來就寫「先 onedir smoke test，
-   再建 installer」。
+4. **Stage 6 onedir 已完成（2026-08-12），待使用者在目標機器實測**。要測的是：
+   複製 `dist/ExternalTranslate/` 到那台 → 執行 `ExternalTranslate.exe` → 控制台自動開啟
+   → **音訊來源列得出來**（這是打包最容易壞的地方）→ 設定改了會寫進
+   `%LOCALAPPDATA%\ExternalTranslate`。
+   **Inno Setup 安裝程式等使用者說 onedir OK 之後再考慮。**
 5. 其他候選：字幕語言（見 `PLAN.md`「候選功能：字幕語言」）、Stage 1.1 ASIO
    （**只有實際硬體需要時才做，目前沒有需要**）。**皆未經指示，不得自行動工。**
 6. Playwright overlay 驗證**已完成**（2026-08-12），見下方。
+
+### Stage 6：PyInstaller onedir（2026-08-12，已實作＋實機驗證）
+
+使用者決定**先做 onedir，OK 之後再考慮 Inno Setup**。
+
+`PYTHONPATH='' uv run python scripts/build_windows.py` → `dist/ExternalTranslate/`（約 72 MB）。
+複製整個資料夾到目標機器、執行 `ExternalTranslate.exe`，**那台不需要 Python／Node／uv**。
+
+- **刻意不做 pywebview**：原生視窗需要 WebView2 執行環境，而本專案不替使用者安裝執行環境
+  （與「不自動安裝 Node」同一條原則）。改為啟動後開預設瀏覽器。要原生視窗的話排到
+  安裝程式那一輪。
+- **保留主控台視窗**：它印出網址，啟動失敗時也看得到原因；windowed build 會無聲失敗。
+  關掉視窗就停止服務——與 `run.bat` 同一個心智模型。
+- **`backend/app/resources.py` 是唯一知道檔案在哪的地方。** 先前有五處各自算
+  `Path(__file__).parents[3]`，每一處在凍結後都會指向那台機器上不存在的原始碼樹。
+- **打包後寫入 `%LOCALAPPDATA%\ExternalTranslate`**，從原始碼執行則維持 `config/`
+  ——後者是刻意的，否則開發者的既有設定會在這次改動後無聲搬家。
+  寫入位置與程式目錄分離，換掉整個資料夾升級也不會弄丟設定（有測試斷言
+  可寫路徑不在 bundle 內）。
+- **單一實例**：啟動前先探連接埠，已被佔用就印 `already_running` 並 exit 1。
+
+**踩到的坑（會再踩，寫下來）：`importlib.import_module` 的模組 PyInstaller 看不到。**
+第一次 build 出來的程式可以開頁面、可以讀設定，**但音訊裝置列舉 500**：
+`ModuleNotFoundError: No module named 'pyaudiowpatch'`。`sounddevice`、`soxr`、
+`websockets` 同理，全部得寫進 spec 的 `hiddenimports`。
+**這種錯誤不會在啟動時出現，只會在操作者打開音訊面板那一刻出現**——所以打包後一定要
+實際打過 `/api/devices` 與 `/api/loopback-endpoints`，不能只看首頁有沒有開。
+
+實測（2026-08-12，`dist/ExternalTranslate/ExternalTranslate.exe`）：
+`/`、`/overlay`、`/api/settings`、`/api/devices`、`/api/loopback-endpoints`、
+`/api/prerequisites`、`/api/caption-presets` 全部 200；loopback 正確回報
+`Speakers (Realtek(R) Audio)`；WebSocket 同源連上；改字幕版面後
+`%LOCALAPPDATA%\ExternalTranslate\config\user.yaml` 出現 `chars_per_line: 14`、
+`idle_reset_ms: 2500`；重複啟動印出 `already_running` 並 exit 1。
+
+**尚未做**：Inno Setup 安裝程式（使用者說 onedir OK 之後再考慮）、
+全新 Windows VM 的安裝測試（Stage 6.1）。
 
 ### Playwright overlay 驗證（2026-08-12，已實作＋已驗證抓得到 bug）
 

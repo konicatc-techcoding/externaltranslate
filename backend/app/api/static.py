@@ -6,6 +6,8 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from backend.app.resources import frontend_dist_path
+
 # The two pages the app has. `App.tsx` picks between them from
 # `window.location.pathname`, so both are the same document and neither is a
 # file on disk. A catch-all would serve HTML for a mistyped API path too,
@@ -14,8 +16,8 @@ _PAGES = ("/", "/overlay")
 
 
 def default_frontend_dist() -> Path:
-    """Where `npm run build` puts the page, in a source checkout."""
-    return Path(__file__).resolve().parents[3] / "frontend" / "dist"
+    """Where the built page lives: `frontend/dist`, or the packaged copy."""
+    return frontend_dist_path()
 
 
 def mount_frontend(app: FastAPI, dist: Path | None = None) -> Path | None:

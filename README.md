@@ -289,7 +289,41 @@ bounded drop-oldest queue；唯一的persistent PCM reader位於Gemini sessions�
 容量1的drop-oldest async handoff供當前session sender消費。Rotation不會建立第二個
 `get_pcm_chunk()` consumer，也不建立無界buffer或追送長時間過期音訊。
 
-## 一鍵啟動（正式使用）
+## 打包成獨立資料夾（onedir）
+
+```bash
+PYTHONPATH='' uv run python scripts/build_windows.py
+```
+
+產出 `dist/ExternalTranslate/`（約 72 MB）。**把整個資料夾複製到目標機器，執行
+`ExternalTranslate.exe` 即可**——那台**不需要 Python、不需要 Node、不需要 uv**。
+
+它會啟動服務並開啟預設瀏覽器；`--no-browser` 可停用，`--port` 可換埠。
+**關掉主控台視窗就會停止服務。** 保留主控台是刻意的：它會印出網址，啟動失敗時也看得到原因。
+
+**沒有原生視窗（pywebview）**，這一版刻意不做：原生視窗需要 WebView2 執行環境，而本程式
+不替使用者安裝任何執行環境。要做的話會排在安裝程式那一輪。
+
+再開一次會偵測到連接埠已被佔用，印出「可能已經在執行中」並結束，而不是丟出 traceback。
+
+設定檔的位置**與從原始碼執行時不同**：
+
+| | 從原始碼執行 | 打包後 |
+|---|---|---|
+| 預設值（唯讀） | `config/default.yaml` | `_internal/config/default.yaml` |
+| 使用者設定 | `config/user.yaml` | `%LOCALAPPDATA%\ExternalTranslate\config\user.yaml` |
+| 字幕預設 | `config/caption-presets.json` | 同上目錄 |
+
+打包後改寫入 `%LOCALAPPDATA%`，因為程式目錄可能唯讀（Program Files 就是），
+而且**升級時直接換掉整個資料夾也不會弄丟設定**。
+
+這台沒有 Node、但已有建置好的 `frontend/dist` 時：
+
+```bash
+PYTHONPATH='' uv run python scripts/build_windows.py --skip-frontend
+```
+
+## 一鍵啟動（從原始碼執行）
 
 在專案根目錄雙擊 **`run.bat`**，或在終端機執行：
 

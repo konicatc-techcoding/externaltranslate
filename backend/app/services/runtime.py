@@ -50,6 +50,7 @@ from backend.app.config import (
 from backend.app.outputs.base import CaptionOutput, NullOutput
 from backend.app.outputs.vmix import VmixClient
 from backend.app.outputs.vmix_output import OutputState, VmixOutput
+from backend.app.resources import preset_store_path
 from backend.app.services.translation_pipeline import TranslationPipeline
 from backend.app.status.caption_status import publish_caption_status
 from backend.app.status.models import (
@@ -188,9 +189,7 @@ class PipelineRuntime:
         self._vmix_notice: str | None = None
         self._vmix_client_factory = vmix_client_factory
         self._vmix_output: CaptionOutput = NullOutput()
-        self._preset_store = preset_store or PresetStore(
-            Path(__file__).resolve().parents[3] / "config" / "caption-presets.json"
-        )
+        self._preset_store = preset_store or PresetStore(preset_store_path())
 
         self._api_key: str | None = None
         self._status_store = StatusStore()

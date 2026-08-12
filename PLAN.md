@@ -802,6 +802,21 @@ Modify: README.md
 
 先完成 onedir smoke test，再建立 installer；不直接跳到 onefile。
 
+### 進度（2026-08-12）
+
+**onedir 已完成並在本機通過實測**（見 `status.md`「Stage 6：PyInstaller onedir」）。
+`scripts/build_windows.py` ＋ `packaging/externaltranslate.spec` ＋
+`backend/app/resources.py`（凍結後的路徑）＋ `backend/app/cli/app_launcher.py`
+（啟動服務、開瀏覽器、單一實例）。
+
+與原計畫的兩點差異，皆為刻意：
+
+- **不做 pywebview**。原生視窗需要 WebView2 執行環境，而本專案不替使用者安裝執行環境。
+  改為開啟預設瀏覽器。要做的話排到 installer 那一輪。
+- **保留主控台視窗**。它印出網址與啟動失敗原因；windowed build 會無聲失敗。
+
+**Inno Setup 尚未開始**——使用者 2026-08-12 決定 onedir 實測 OK 之後再考慮。
+
 ### 不自動安裝任何東西（2026-08-11 決議）
 
 使用者問「打包時能不能檢查環境、沒裝 Node 就自動幫他裝」。答案是**不需要，也不會做**：

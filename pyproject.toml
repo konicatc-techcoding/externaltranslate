@@ -23,6 +23,7 @@ dependencies = [
 dev = [
   "httpx2>=2.10,<3",
   "mypy>=1.15,<2",
+  "pyinstaller>=6.11,<7",
   "pytest>=8.3,<9",
   "ruff>=0.11,<1",
   "types-PyYAML>=6.0.12,<7",
@@ -36,6 +37,7 @@ externaltranslate-loopback-smoke = "backend.app.cli.loopback_smoke:main"
 externaltranslate-gemini-smoke = "backend.app.cli.gemini_smoke:main"
 externaltranslate-prerequisites = "backend.app.cli.prerequisites:main"
 externaltranslate-serve = "backend.app.cli.serve:main"
+externaltranslate-app = "backend.app.cli.app_launcher:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["backend"]
