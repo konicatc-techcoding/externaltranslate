@@ -141,6 +141,7 @@ def test_settings_expose_only_non_secret_fields(client: TestClient) -> None:
             "manual_input_name": None,
             "manual_fields": ["Manual1.Text"],
             "manual_slots": ["", "", "", "", ""],
+            "manual_chars_per_line": 20,
         },
         "ui": {"collapsed": []},
         "session_rotation_seconds": 480,

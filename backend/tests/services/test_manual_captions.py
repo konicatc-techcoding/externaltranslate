@@ -144,7 +144,9 @@ def test_long_text_keeps_the_beginning_and_says_it_did_not_fit() -> None:
     # the translation window does — would hide the part that matters.
     async def scenario() -> None:
         with FakeVmix([_TRANSLATION, _MANUAL]) as server:
-            runtime = _runtime(_settings(server))
+            # Stated rather than inherited: the width this wraps at is the
+            # manual title's own, so the test says which one it means.
+            runtime = _runtime(_settings(server, manual_chars_per_line=10))
 
             lines = await runtime.send_manual_caption("一二三四五六七八九十" * 4)
             await runtime.close_manual_output()
@@ -188,3 +190,36 @@ def test_the_manual_title_may_not_be_the_translation_title() -> None:
 
         with pytest.raises(RuntimeSelectionError):
             runtime.update_vmix_settings({"manual_input_guid": _TRANSLATION.guid})
+
+
+def test_the_manual_line_width_is_its_own() -> None:
+    # Changing how the translation wraps must not silently rewrap a prepared
+    # message: they are different titles with different boxes.
+    async def scenario() -> None:
+        with FakeVmix([_TRANSLATION, _MANUAL]) as server:
+            settings = _settings(server, manual_chars_per_line=4)
+            runtime = _runtime(settings)
+
+            lines = await runtime.send_manual_caption("一二三四五六七八")
+            await runtime.close_manual_output()
+
+        # Four full-width characters per line, not the translation's ten.
+        assert lines == ["一二三四", "五六七八"]
+
+    asyncio.run(scenario())
+
+
+def test_the_translation_width_no_longer_moves_it() -> None:
+    async def scenario() -> None:
+        with FakeVmix([_TRANSLATION, _MANUAL]) as server:
+            runtime = _runtime(_settings(server, manual_chars_per_line=4))
+            runtime.update_caption_layout(
+                chars_per_line=40, max_lines=2, sentence_breaks=True
+            )
+
+            lines = await runtime.send_manual_caption("一二三四五六七八")
+            await runtime.close_manual_output()
+
+        assert lines == ["一二三四", "五六七八"]
+
+    asyncio.run(scenario())

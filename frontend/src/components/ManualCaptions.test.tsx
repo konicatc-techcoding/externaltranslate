@@ -9,7 +9,9 @@ const SLOTS = ["請稍候", "節目稍後開始", "", "", ""];
 function renderPanel(overrides: Partial<Parameters<typeof ManualCaptions>[0]> = {}) {
   const props = {
     slots: SLOTS,
+    charsPerLine: 20,
     onSlotsChange: vi.fn(),
+    onCharsPerLineChange: vi.fn(),
     onSend: vi.fn(),
     onClear: vi.fn(),
     ...overrides,
@@ -88,5 +90,31 @@ describe("ManualCaptions", () => {
     renderPanel({ lastSent: ["太長了"], overflowed: true });
 
     expect(screen.getByRole("alert")).toBeInTheDocument();
+  });
+});
+
+describe("每行字數", () => {
+  it("是手動字幕自己的，不跟著即時翻譯", async () => {
+    const user = userEvent.setup();
+    const props = renderPanel({ charsPerLine: 20 });
+
+    const width = screen.getByLabelText("每行字數");
+    expect(width).toHaveValue(20);
+
+    await user.clear(width);
+    await user.type(width, "30");
+
+    expect(props.onCharsPerLineChange).toHaveBeenLastCalledWith(30);
+  });
+
+  it("超出範圍的值不送出", async () => {
+    const user = userEvent.setup();
+    const props = renderPanel({ charsPerLine: 20 });
+
+    const width = screen.getByLabelText("每行字數");
+    await user.clear(width);
+    await user.type(width, "99");
+
+    expect(props.onCharsPerLineChange).not.toHaveBeenCalledWith(99);
   });
 });

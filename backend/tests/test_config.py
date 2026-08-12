@@ -609,3 +609,45 @@ def test_manual_slots_are_a_closed_shape(tmp_path: Path, slots: str) -> None:
 
     with pytest.raises(ConfigurationError, match="manual_slots"):
         load_settings(default_path)
+
+
+def test_manual_line_width_defaults_to_the_same_number_as_the_translation(
+    tmp_path: Path,
+) -> None:
+    from backend.app.config import DEFAULT_CHARS_PER_LINE, vmix_settings
+
+    default_path = tmp_path / "default.yaml"
+    default_path.write_text(_vmix_yaml(), encoding="utf-8")
+
+    vmix = vmix_settings(load_settings(default_path))
+
+    assert vmix["manual_chars_per_line"] == DEFAULT_CHARS_PER_LINE
+
+
+def test_manual_line_width_is_independent(tmp_path: Path) -> None:
+    # The manual title is a different GT Title with its own box and font size;
+    # nothing about it follows from how the translation is wrapped.
+    from backend.app.config import caption_layout, vmix_settings
+
+    default_path = tmp_path / "default.yaml"
+    default_path.write_text(
+        "caption:\n  max_payload_length: 4096\n  chars_per_line: 12\n"
+        + _vmix_yaml("  manual_chars_per_line: 30\n"),
+        encoding="utf-8",
+    )
+
+    settings = load_settings(default_path)
+
+    assert caption_layout(settings)[0] == 12
+    assert vmix_settings(settings)["manual_chars_per_line"] == 30
+
+
+@pytest.mark.parametrize("value", [0, 3, 61, '"20"'])
+def test_manual_line_width_is_bounded(tmp_path: Path, value: object) -> None:
+    default_path = tmp_path / "default.yaml"
+    default_path.write_text(
+        _vmix_yaml(f"  manual_chars_per_line: {value}\n"), encoding="utf-8"
+    )
+
+    with pytest.raises(ConfigurationError, match="manual_chars_per_line"):
+        load_settings(default_path)

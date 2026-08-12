@@ -173,6 +173,10 @@ export const zhTW = {
       "送到 vMix 的另一個 Title，與即時翻譯同時進行、互不影響。" +
       "送出後會一直停留在畫面上，直到再送一次或按清空。",
     slotLabel: "字幕",
+    charsPerLine: "每行字數",
+    charsPerLineHint:
+      "手動字幕的 Title 有自己的文字框，這個字數與即時翻譯各自獨立。" +
+      "送出後下方會顯示實際斷成幾行，不合適就改數字再送一次。",
     send: "發送 ON AIR",
     clear: "清空",
     onAir: "ON AIR",

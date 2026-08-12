@@ -113,6 +113,8 @@ export interface VmixSettings {
   manual_fields: string[];
   /** The five prepared boxes, saved so a show can be set up ahead of time. */
   manual_slots: string[];
+  /** The manual title's own line width, independent of the translation's. */
+  manual_chars_per_line: number;
 }
 
 export const DEFAULT_VMIX_SETTINGS: VmixSettings = {
@@ -128,6 +130,7 @@ export const DEFAULT_VMIX_SETTINGS: VmixSettings = {
   manual_input_name: null,
   manual_fields: ["Manual1.Text"],
   manual_slots: ["", "", "", "", ""],
+  manual_chars_per_line: 20,
 };
 
 export interface VmixInputItem {

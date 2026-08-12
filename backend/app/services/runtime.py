@@ -650,7 +650,7 @@ class PipelineRuntime:
         allowed = {"host", "port", "input_guid", "input_name", "fields",
                    "min_interval_ms", "timeout_ms",
                    "manual_input_guid", "manual_input_name", "manual_fields",
-                   "manual_slots"}
+                   "manual_slots", "manual_chars_per_line"}
         unknown = set(updates) - allowed
         if unknown:
             raise RuntimeSelectionError(f"不支援的 vMix 設定欄位：{min(unknown)}。")
@@ -726,6 +726,7 @@ class PipelineRuntime:
                     # them on restart would mean typing them again before
                     # every show.
                     "manual_slots",
+                    "manual_chars_per_line",
                 )
             },
             "features": {"vmix_output": vmix["enabled"]},
@@ -790,11 +791,13 @@ class PipelineRuntime:
         streamed sentence starting at the edge of a line, and on a prepared
         message it only wastes the box.
         """
-        fields = list(vmix_settings(self._settings)["manual_fields"])
-        chars_per_line, _max_lines = caption_layout(self._settings)
+        vmix = vmix_settings(self._settings)
+        fields = list(vmix["manual_fields"])
         wrapped = wrap_caption(
             text,
-            chars_per_line=chars_per_line,
+            # Its own width, not the translation's: they are different titles
+            # with different boxes, and changing one must not rewrap the other.
+            chars_per_line=int(vmix["manual_chars_per_line"]),
             max_lines=_MANUAL_WRAP_LIMIT,
             sentence_breaks=False,
         )

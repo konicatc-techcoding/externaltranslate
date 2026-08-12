@@ -2,8 +2,13 @@ import { useEffect, useState } from "react";
 
 import { zhTW } from "../i18n/zh-TW";
 
+export const MANUAL_CHARS_PER_LINE_RANGE = [4, 60] as const;
+
 interface ManualCaptionsProps {
   slots: string[];
+  /** The manual title's own width; the translation's is a separate setting. */
+  charsPerLine: number;
+  onCharsPerLineChange: (charsPerLine: number) => void;
   /** Saved on blur, so a prepared show survives a restart. */
   onSlotsChange: (slots: string[]) => void;
   onSend: (text: string) => void;
@@ -24,6 +29,8 @@ interface ManualCaptionsProps {
  */
 export function ManualCaptions({
   slots,
+  charsPerLine,
+  onCharsPerLineChange,
   onSlotsChange,
   onSend,
   onClear,
@@ -34,11 +41,16 @@ export function ManualCaptions({
 }: ManualCaptionsProps) {
   const [drafts, setDrafts] = useState(slots);
   const [selected, setSelected] = useState(0);
+  const [width, setWidth] = useState(String(charsPerLine));
 
   // The server is the source of truth, as everywhere else on this page.
   useEffect(() => {
     setDrafts(slots);
   }, [slots]);
+
+  useEffect(() => {
+    setWidth(String(charsPerLine));
+  }, [charsPerLine]);
 
   const edit = (index: number, value: string): void => {
     setDrafts((current) => current.map((text, at) => (at === index ? value : text)));
@@ -83,6 +95,30 @@ export function ManualCaptions({
           </li>
         ))}
       </ol>
+
+      <div className="field-row">
+        <label htmlFor="manual-chars-per-line">{zhTW.manual.charsPerLine}</label>
+        <input
+          id="manual-chars-per-line"
+          type="number"
+          inputMode="numeric"
+          min={MANUAL_CHARS_PER_LINE_RANGE[0]}
+          max={MANUAL_CHARS_PER_LINE_RANGE[1]}
+          value={width}
+          onChange={(event) => {
+            setWidth(event.target.value);
+            const parsed = Number(event.target.value);
+            if (
+              Number.isInteger(parsed) &&
+              parsed >= MANUAL_CHARS_PER_LINE_RANGE[0] &&
+              parsed <= MANUAL_CHARS_PER_LINE_RANGE[1]
+            ) {
+              onCharsPerLineChange(parsed);
+            }
+          }}
+        />
+      </div>
+      <p className="panel__note">{zhTW.manual.charsPerLineHint}</p>
 
       <div className="field-row">
         <button
