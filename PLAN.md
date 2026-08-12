@@ -707,8 +707,33 @@ Modify: frontend/src/pages/OverlayPage.tsx      (改渲染後端 lines)
 - `SetText` 的 `Value`、`Input`、`SelectedName` 正確 encoding。
 - 更新去重與每秒最大更新次數。
 - Timeout、HTTP 500、vMix offline 和 reconnect。
-- Browser Input overlay URL 與顯示/隱藏控制。
+- Browser Input overlay URL。
 - vMix failure 不影響 web overlay。
+
+### 已砍除的能力：Browser Input 顯示/隱藏控制（2026-08-12 使用者決定）
+
+原本列的是「Browser Input overlay URL **與顯示/隱藏控制**」，顯示/隱藏那半砍掉。
+
+理由：vMix 自己就有 Overlay 與 Cut，導播本來就在那個介面上操作；再做一顆遠端按鈕等於
+同一件事有兩個開關。更關鍵的是 **`SetText` 這條路只能送指令、讀不回狀態**，所以那顆按鈕
+無從得知畫面上現在到底有沒有那個 input——做出來會是一顆不知道自己是開還是關的按鈕，
+比沒有更糟。
+
+### Stage 5 完成狀態（2026-08-12）
+
+**Phase A ＋ Phase B 皆已通過真實 vMix 驗收**（vMix 28.0.0.42，在另一台電腦上）。
+Phase B 四項：GT Title 與 `/overlay` 斷行一致、停止翻譯後兩邊清空、翻譯中強制關閉 vMix
+後翻譯續行且 vMix 回來自動接上、Browser Input 實際顯示。
+
+**已知且刻意的限制**：
+
+- **Browser Input 只在「程式與 vMix 同一台」時可用。** 它要求 vMix 那台連進來抓
+  `/overlay`，而服務只綁 `127.0.0.1`。**GT Title 沒有這個限制**（我們主動連出去），
+  所以程式在別台時用 GT Title。
+  區網開放 ＋ IP 名單的做法已設計但**使用者 2026-08-12 傾向不做**，形狀記在 `status.md`，
+  未經指示不得動工。
+- **vMix prerequisite 只查本機 `vmix.exe`**（使用者 2026-08-12 決定不改）。vMix 在別台時
+  那一列永遠顯示「未偵測到」；實際的連線檢查由控制頁的「從 vMix 讀取 input」負責。
 
 ### 預計檔案
 
@@ -915,17 +940,18 @@ Stage 0、Stage 1、Stage 1.2 與 Stage 2 已完成並通過驗證與發布：
 收束只會改動 `CaptionState` 語意（text 被清、revision 跳動、GT Title 收到的形狀改變），
 收益小而牽動大。目前仍只有 `finished=true` 與 session 邊界會收束。
 
-**Stage 5 Phase A 已完成（2026-08-10），待實機驗收**：vMix client、節流送出器、
-行→欄位映射、失敗隔離、API routes 與控制頁面板，全部以假 vMix 走真實 HTTP 驗證。
-Phase B（真機 smoke）未執行，因此 Stage 5 **尚未完成**。
+**Stage 5 已完成（2026-08-12 通過真實 vMix 驗收）**：Phase A 的 vMix client、節流送出器、
+行→欄位映射、失敗隔離、API routes 與控制頁面板，加上 Phase B 四項實機驗收全數通過。
+收尾的三個決定（prerequisite 不改、顯示/隱藏控制砍掉、拓樸 B 的區網開放不做）
+見上方 Stage 5 一節與 `status.md`。
 
-**跨機器輸出的現況**（2026-08-10 記錄，之後有空再做）：
+**跨機器輸出的現況**（2026-08-12 定案，不再是待辦）：
 - **GT Title 可以跨機器**——我們主動連出去打 vMix API，`vmix.host` 填對方 IP 即可。
 - **Browser Input 不行**——對方要連進來抓 `/overlay`，但 `resolve_bind_host()` 只允許
   `127.0.0.1`，`features.lan_access` 被刻意忽略。這是 Stage 4 的安全決定，不是疏漏。
-  要支援需明確開關、使用者指定綁定位址、控制頁標示服務已對外；建議**只開 `/overlay`**，
-  控制頁與 API 維持 loopback。**未經使用者指示不得動工。**
+  使用者 2026-08-12 決定**不做**區網開放。程式在別台時用 GT Title；Browser Input 只在同機時可用
+  ——這是產品限制，不是待辦缺口。**未經新的明確指示不得動工。**
 
 ```text
-Stage 5 Phase A（已完成）→ Phase B 真實 vMix 驗收（同一台）→ v0.3
+Stage 5 Phase A ＋ Phase B 皆已通過實機驗收 → v0.3 完成
 ```

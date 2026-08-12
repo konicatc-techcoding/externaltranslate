@@ -37,9 +37,11 @@ ExternalTranslate 是 Windows 本機優先的即時翻譯字幕應用程式。�
   時發布狀態；CLI新增`--status-events`與`--caption-state`。真實Gemini smoke尚未完成前，
   不視為Stage 3.2驗收通過。
 
-- **Stage 5 Phase A（待實機驗收）**：vMix HTTP API 輸出——`GET /api/` 探索 input、
-  `SetText` 寫入 GT Title 文字欄位、節流與 bounded backoff、停止時清空欄位，以及控制頁的
-  vMix 面板。**已用假 vMix 走真實 HTTP 驗證，尚未在真的 vMix 上跑過**，因此不算 Stage 5 完成。
+- **Stage 5（已完成，2026-08-12 通過真實 vMix 驗收）**：vMix HTTP API 輸出——`GET /api/`
+  探索 input、`SetText` 寫入 GT Title 文字欄位、節流與 bounded backoff、停止時清空欄位，
+  以及控制頁的 vMix 面板。實機驗證項目：GT Title 與 `/overlay` 斷行一致、停止翻譯後兩邊
+  清空、翻譯中強制關閉 vMix 後翻譯續行且 vMix 回來自動接上、Browser Input 實際顯示。
+  **Browser Input 只在「程式與 vMix 同一台」時可用**（見下方 vMix 輸出一節）。
 
 目前不會：
 
@@ -521,11 +523,26 @@ OBS Browser Source去背；字幕框自己的底色由`bg`與`opacity`決定。
 `lines`**只覆寫這個 overlay 顯示幾行，不改後端斷行**——因此可以同時開兩個高度不同的
 Browser Input 吃同一份字幕。要改每行字數請用控制頁或 caption-layout API。
 
-## vMix 輸出（Stage 5 Phase A，待實機驗收）
+## vMix 輸出（Stage 5，已通過真實 vMix 驗收）
 
 字幕會送到兩個地方：**Browser Input** 直接吃 `/overlay`，**GT Title** 由後端用
 `SetText` 寫入文字欄位。兩者共用同一份 `CaptionState.lines`，所以換行位置一定一致——
-GT Title 是純文字欄位，沒有瀏覽器可以排版，這是唯一能讓兩個畫面一致的做法。
+GT Title 是純文字欄位，沒有瀏覽器可以排版，這是唯一能讓兩個畫面一致的做法。實機已確認
+兩邊斷行相同。
+
+### 兩者的適用範圍不一樣
+
+| | 程式與 vMix 同一台 | vMix 在另一台 |
+|---|---|---|
+| **GT Title** | 可用 | **可用**——我們主動連出去，`vmix.host` 填對方 IP |
+| **Browser Input** | 可用 | **不可用** |
+
+Browser Input 需要 vMix 那台**連進來**抓 `/overlay`，而服務只綁 `127.0.0.1`
+（Stage 4 的刻意決定：把服務攤上網路，等於把這台機器聽得到的聲音也攤上去）。
+所以**程式跑在別台時請用 GT Title**。
+
+GT Title 沒有捲動動畫——`SetText` 是直接換字。要滑動效果就得用 Browser Input，
+也就是要跟 vMix 同一台。
 
 在控制頁的「vMix 輸出」面板設定：
 
